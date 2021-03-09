@@ -6,6 +6,8 @@
   # in terms of centimeters. Therefore, just for the sake of data transfers, we need to
   # scale NekRSMesh to centimeters.
   scaling = 100.0
+
+#  parallel_type = distributed
 []
 
 [Problem]
