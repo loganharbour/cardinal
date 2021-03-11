@@ -411,13 +411,19 @@ NekRSMesh::addElems()
       int node = (*_node_index)[n];
 
       auto node_offset = e * _n_vertices_per_elem + node;
-      Point p(_x[node_offset], _y[node_offset], _z[node_offset]);
-      p *= _scaling;
+      Node * node_ptr = _mesh->query_node_ptr(node_offset);
 
-      if (_verbose)
-        _console << "Adding point: " << p << std::endl;
+      if (!node_ptr)
+      {
+        Point p(_x[node_offset], _y[node_offset], _z[node_offset]);
+        p *= _scaling;
 
-      auto node_ptr = _mesh->add_point(p);
+        if (_verbose)
+          _console << "Adding point: " << p << std::endl;
+
+        node_ptr = _mesh->add_point(p, node_offset);
+      }
+
       elem->set_node(n) = node_ptr;
     }
 
