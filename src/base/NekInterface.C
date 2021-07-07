@@ -477,7 +477,7 @@ void map_volume_x_displacement(const int elem_id, const int order, double * disp
     int id = e * mesh->Np;
     for (int v = 0; v < mesh->Np; ++v)
       mesh->x[id + v] += source_disp[v];
-
+    
     free(source_disp);
   }
 }
@@ -701,6 +701,15 @@ void copyScratchToDevice()
   // first two slices are always reserved for the heat flux and volumetric heat source. Either one
   // or both will be present, but we always reserve the first two slices for this coupling data.
   nrs->o_usrwrk.copyFrom(nrs->usrwrk, 2 * scalarFieldOffset() * sizeof(dfloat), 0);
+}
+
+void copyDisplacementToDevice()
+{
+  mesh_t* mesh = temperatureMesh();
+  mesh->o_x.copyFrom(mesh->x);
+  mesh->o_y.copyFrom(mesh->y);
+  mesh->o_z.copyFrom(mesh->z);
+  mesh->update();
 }
 
 double sideMaxValue(const std::vector<int> & boundary_id, const field::NekFieldEnum & field)
