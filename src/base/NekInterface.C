@@ -705,7 +705,7 @@ void copyScratchToDevice()
 
 void copyDeformationToDevice()
 {
-  mesh_t* mesh = temperatureMesh();
+  mesh_t * mesh = temperatureMesh();
   mesh->o_x.copyFrom(mesh->x);
   mesh->o_y.copyFrom(mesh->y);
   mesh->o_z.copyFrom(mesh->z);
