@@ -34,6 +34,11 @@ validParams<NekRSProblem>()
     "temperature (in dimensional form) in the nekRS problem");
   params.addParam<PostprocessorName>("max_T", "If provided, postprocessor used to limit the maximum "
     "temperature (in dimensional form) in the nekRS problem");
+
+  params.addParam<MooseEnum>("incoming_BC", getIncomingBCEnum(),
+    "Boundary condition to apply to nekRS conjugate heat transfer cases: "
+    "options: flux (default), temperature. The 'other' BC is then set in the coupled MOOSE application. "
+    "In other words, if 'flux' is sent to nekRS as a BC, then nekRS will send out temperature as a MOOSE BC.");
   return params;
 }
 
@@ -43,6 +48,7 @@ NekRSProblem::NekRSProblem(const InputParameters &params) : ExternalProblem(para
     _minimize_transfers_in(_moving_mesh ? true : getParam<bool>("minimize_transfers_in")),
     _minimize_transfers_out(getParam<bool>("minimize_transfers_out")),
     _nondimensional(getParam<bool>("nondimensional")),
+    _incoming_BC(getParam<MooseEnum>("incoming_BC").getEnum<incoming::BoundaryConditionEnum>()),
     _U_ref(getParam<Real>("U_ref")),
     _T_ref(getParam<Real>("T_ref")),
     _dT_ref(getParam<Real>("dT_ref")),
@@ -106,6 +112,10 @@ NekRSProblem::NekRSProblem(const InputParameters &params) : ExternalProblem(para
       "reference dimensional scales in the same units as expected by MOOSE, i.e. 'L_ref' "
       "must match 'scaling' in 'NekRSMesh'.");
 
+  // If only volume coupling is specified, then the 'incoming_BC' parameter is unused
+  if (!_nek_mesh->boundary() && params.isParamSetByUser("incoming_BC"))
+    mooseWarning("The 'incoming_BC' parameter is unused when boundary coupling is not specified!");
+
   // boundary-specific data
   _boundary = _nek_mesh->boundary();
   _n_surface_elems = _nek_mesh->numSurfaceElems();
@@ -123,10 +133,25 @@ NekRSProblem::NekRSProblem(const InputParameters &params) : ExternalProblem(para
   // Depending on the type of coupling, initialize various problem parameters
   if (_boundary && !_volume) // only boundary coupling
   {
-    _incoming = "boundary heat flux";
-    _outgoing = "boundary temperature";
     _n_points = _n_surface_elems * _n_vertices_per_surface;
-    _flux_face = (double *) calloc(_n_vertices_per_surface, sizeof(double));
+
+    switch (_incoming_BC)
+    {
+      case incoming::flux:
+        _incoming = "boundary heat flux";
+        _outgoing = "boundary temperature";
+        _flux_face = (double *) calloc(_n_vertices_per_surface, sizeof(double));
+        _T = (double*) calloc(_n_points, sizeof(double));
+        break;
+      case incoming::temperature:
+        _incoming = "boundary temperature";
+        _outgoing = "boundary heat flux";
+        _T_face = (double *) calloc(_n_vertices_per_surface, sizeof(double));
+        _flux = (double*) calloc(_n_points, sizeof(double));
+        break;
+      default:
+        mooseError("Unhandled BoundaryConditionEnum in NekRSProblem!");
+    }
   }
   else if (_volume && !_boundary) // only volume coupling
   {
@@ -134,14 +159,29 @@ NekRSProblem::NekRSProblem(const InputParameters &params) : ExternalProblem(para
     _outgoing = "volume temperature";
     _n_points = _n_volume_elems * _n_vertices_per_volume;
     _source_elem = (double*) calloc(_n_vertices_per_volume, sizeof(double));
+    _T = (double*) calloc(_n_points, sizeof(double));
   }
   else // both volume and boundary coupling
   {
-    _incoming = "boundary heat flux and volume power density";
-    _outgoing = "volume temperature";
     _n_points = _n_volume_elems * _n_vertices_per_volume;
-    _flux_elem = (double *) calloc(_n_vertices_per_volume, sizeof(double));
     _source_elem = (double*) calloc(_n_vertices_per_volume, sizeof(double));
+    _T = (double *) calloc(_n_points, sizeof(double));
+
+    switch (_incoming_BC)
+    {
+      case incoming::flux:
+        _incoming = "boundary heat flux and volume power density";
+        _outgoing = "volume temperature";
+        _flux_elem = (double *) calloc(_n_vertices_per_volume, sizeof(double));
+        break;
+      case incoming::temperature:
+        _incoming = "boundary temperature and volume power density";
+        _outgoing = "boundary heat flux and volume temperature";
+        _T_elem = (double *) calloc(_n_vertices_per_volume, sizeof(double));
+        break;
+      default:
+        mooseError("Unhandled BoundaryConditionEnum in NekRSProblem!");
+    }
   }
 
   if (_moving_mesh)
@@ -162,9 +202,6 @@ NekRSProblem::NekRSProblem(const InputParameters &params) : ExternalProblem(para
     }
   }
 
-  // regardless of the boundary/volume coupling, we will always exchange temperature
-  _T = (double*) calloc(_n_points, sizeof(double));
-
   nekrs::initializeInterpolationMatrices(_nek_mesh->numQuadraturePoints1D());
 
   // we can save some effort for the low-order situations where the interpolation
@@ -184,11 +221,14 @@ NekRSProblem::~NekRSProblem()
   if (!isOutputStep())
     nekrs::outfld(_timestepper->nondimensionalDT(_time));
 
+
   if (_T) free(_T);
+  if (_flux) free(_flux);
   if (_flux_face) free(_flux_face);
+  if (_T_face) free(_T_face);
   if (_source_elem) free(_source_elem);
   if (_flux_elem) free(_flux_elem);
-
+  if (_T_elem) free(_T_elem);
   if (_displacement_x) free(_displacement_x);
   if (_displacement_y) free(_displacement_y);
   if (_displacement_z) free(_displacement_z);
@@ -210,7 +250,7 @@ NekRSProblem::initialSetup()
       "will not solve for temperature.\n\nThe temperature transferred to MOOSE will remain "
       "fixed at its initial condition, and the heat flux and power transferred to nekRS will be unused.");
 
-  // For boundary-based coupling, we should check that the correct flux boundary
+  // For boundary-based coupling, we should check that the correct boundary
   // condition is set on all of nekRS's boundaries. To avoid throwing this
   // error for test cases where we have a [TEMPERATURE] block but set its solve
   // to 'none', we also check whether we're actually computing for the temperature.
@@ -218,13 +258,31 @@ NekRSProblem::initialSetup()
   if (boundary && has_temperature_solve)
   {
     for (const auto & b : *boundary)
-      if (!nekrs::mesh::isHeatFluxBoundary(b))
+    {
+      const std::string type = nekrs::mesh::temperatureBoundaryType(b);
+
+      switch (_incoming_BC)
       {
-        const std::string type = nekrs::mesh::temperatureBoundaryType(b);
-        mooseError("In order to send a boundary heat flux to nekRS, you must have a flux condition "
-          "for each 'boundary' set in 'NekRSMesh'!\nBoundary " + std::to_string(b) + " is of type '" +
-          type + "' instead of 'fixedGradient'.");
+        case incoming::flux:
+        {
+          if (!nekrs::mesh::isHeatFluxBoundary(b))
+            mooseError("In order to send a boundary heat flux to nekRS, you must have a flux condition "
+              "for each 'boundary' set in 'NekRSMesh'!\nBoundary " + std::to_string(b) + " is of type '" +
+              type + "' instead of 'fixedGradient'.");
+          break;
+        }
+        case incoming::temperature:
+        {
+          if (!nekrs::mesh::isTemperatureBoundary(b))
+            mooseError("In order to send a boundary temperature to nekRS, you must have a Dirichlet condition "
+              "for each 'boundary' set in 'NekRSMesh'!\nBoundary " + std::to_string(b) + " is of type '" +
+              type + "' instead of 'fixedValue'.");
+          break;
+        }
+        default:
+          mooseError("Unhandled BoundaryConditionEnum in NekRSProblem!");
       }
+    }
   }
 
   // For volume-based coupling, we should check that there is a udf function providing
@@ -422,6 +480,13 @@ NekRSProblem::synchronizeOut()
   }
 
   return synchronize;
+}
+
+void
+NekRSProblem::sendBoundaryTemperatureToNek()
+{
+  _console << "Sending temperature to nekRS boundary " << Moose::stringify(*_boundary) << "... ";
+  _console << "done" << std::endl;
 }
 
 void
@@ -767,6 +832,19 @@ NekRSProblem::getBoundaryTemperatureFromNek()
 }
 
 void
+NekRSProblem::getBoundaryHeatFluxFromNek()
+{
+  _console << "Extracting nekRS heat flux from boundary " << Moose::stringify(*_boundary) << "... ";
+
+  // Get the flux solution from nekRS. Note that nekRS performs a global communication
+  // here such that each nekRS process has all the boundary flux information. That is,
+  // every process knows the full boundary heat flux solution
+  nekrs::boundaryHeatFlux(_nek_mesh->order(), _needs_interpolation, _flux);
+
+  _console << "done" << std::endl;
+}
+
+void
 NekRSProblem::getVolumeTemperatureFromNek()
 {
   _console << "Extracting nekRS temperature from volume... ";
@@ -775,7 +853,7 @@ NekRSProblem::getVolumeTemperatureFromNek()
   // here such that each nekRS process has all the volume temperature information. In
   // other words, regardless of which elements a nek rank owns, after calling nekrs::temperature,
   // every process knows the temperature in the volume.
-  nekrs::volumeTemperature(_nek_mesh->order(), _needs_interpolation, _T);
+  nekrs::volumeSolution(_nek_mesh->order(), _needs_interpolation, field::temperature, _T);
 
   _console << "done" << std::endl;
 }
@@ -793,12 +871,29 @@ void NekRSProblem::syncSolutions(ExternalProblem::Direction direction)
       }
 
       if (_boundary)
-        sendBoundaryHeatFluxToNek();
+      {
+        switch (_incoming_BC)
+        {
+          case incoming::flux:
+          {
+            sendBoundaryHeatFluxToNek();
+            break;
+          }
+          case incoming::temperature:
+          {
+            sendBoundaryTemperatureToNek();
+            break;
+          }
+          default:
+            mooseError("Unhandled BoundaryConditionEnum in NekRSProblem!");
+        }
+      }
 
       if (_volume)
         sendVolumeHeatSourceToNek();
 
-      // copy the boundary heat flux and/or volume heat source in the scratch space to device
+      // copy the boundary condition (heat flux or temperature) and/or volume heat source
+      // in the scratch space to device
       nekrs::copyScratchToDevice();
 
       if (_moving_mesh)
@@ -823,19 +918,42 @@ void NekRSProblem::syncSolutions(ExternalProblem::Direction direction)
         return;
       }
 
-      if (!_volume)
-        getBoundaryTemperatureFromNek();
-
+      // no matter the status of boundary coupling, we will extract a volume temperature if
+      // volume coupling is turned on
       if (_volume)
+      {
         getVolumeTemperatureFromNek();
+        fillAuxVariable(_temp_var, _T);
+      }
 
-      // for boundary-only coupling, this fills a variable on a boundary mesh; otherwise,
-      // this fills a variable on a volume mesh (because we will want a volume temperature for
-      // neutronics feedback, and we can still get a temperature boundary condition from a volume set)
-      fillAuxVariable(_temp_var, _T);
+      if (_boundary)
+      {
+        switch (_incoming_BC)
+        {
+          case incoming::flux:
+          {
+            // for extracting temperature, we only need to grab the temperature specifically
+            // on the boundary if volume coupling isn't present (otherwise, we already extracted
+            // the entire NekRS volume temperature, which includes the boundary of interest).
+            if (!_volume)
+            {
+              getBoundaryTemperatureFromNek();
+              fillAuxVariable(_temp_var, _T);
+            }
+            break;
+          }
+          case incoming::temperature:
+          {
+            getBoundaryHeatFluxFromNek();
+            fillAuxVariable(_avg_flux_var, _flux);
+            break;
+          }
+          default:
+            mooseError("Unhandled BoundaryConditionEnum in NekRSProblem!");
+        }
+      }
 
-      _console << "Interpolated temperature min/max values: " <<
-        minInterpolatedTemperature() << ", " << maxInterpolatedTemperature() << std::endl;
+      printExtractedSolution();
 
       break;
     }
@@ -844,24 +962,37 @@ void NekRSProblem::syncSolutions(ExternalProblem::Direction direction)
   }
 }
 
+void
+NekRSProblem::printExtractedSolution() const
+{
+  bool has_temperature_transfer = _volume || _incoming_BC == incoming::flux;
+
+  if (has_temperature_transfer)
+    _console << "Interpolated temperature min/max values: " <<
+      minInterpolatedValue(_T) << ", " << maxInterpolatedValue(_T) << std::endl;
+  else
+    _console << "Interpolated flux min/max values: " <<
+      minInterpolatedValue(_flux) << ", " << maxInterpolatedValue(_flux) << std::endl;
+}
+
 double
-NekRSProblem::maxInterpolatedTemperature() const
+NekRSProblem::maxInterpolatedValue(const double * v) const
 {
   double maximum = std::numeric_limits<double>::min();
 
   for (int i = 0; i < _n_points; ++i)
-    maximum = std::max(maximum, _T[i]);
+    maximum = std::max(maximum, v[i]);
 
   return maximum;
 }
 
 double
-NekRSProblem::minInterpolatedTemperature() const
+NekRSProblem::minInterpolatedValue(const double * v) const
 {
   double minimum = std::numeric_limits<double>::max();
 
   for (int i = 0; i < _n_points; ++i)
-    minimum = std::min(minimum, _T[i]);
+    minimum = std::min(minimum, v[i]);
 
   return minimum;
 }
@@ -884,30 +1015,43 @@ NekRSProblem::addExternalVariables()
       mooseError("Unhandled 'NekOrderEnum' in 'NekRSProblem'!");
   }
 
-  // Because this temperature represents the reconstruction of nekRS's temperature
+  // Because this temperature represents the reconstruction of either
+  // (1) nekRS's temperature onto the transfer mesh (for 'incoming_BC = flux') or
+  // (2) a received temperature from a coupled MOOSE application,
   // onto the NekRSMesh, we set the order to match the desired order of the mesh.
-  // Note that this does _not_ imply anything about the order of the temperature
-  // variable in the MOOSE app (such as BISON) coupled to nekRS. This is just the
-  // variable that nekRS writes into, and then MOOSE's transfer classes can handle
-  // any additional interpolations needed from 'temp' into the receiving-app's fields.
+  // MOOSE's transfer classes can handle any additional interpolations.
   addAuxVariable("MooseVariable", "temp", var_params);
   _temp_var = _aux->getFieldVariable<Real>(0, "temp").number();
 
   if (_boundary)
   {
-    // Likewise, because this flux represents the reconstruction of the flux variable
-    // that becomes a boundary condition in the nekRS model, we set the order to match
-    // the desired order of the surface. Note that this does _not_ imply anything
-    // about the order of the surface flux in the MOOSE app (such as BISON) coupled
-    // to nekRS. This is just the variable that nekRS reads from - MOOSE's transfer
-    // classes handle any additional interpolations needed from the flux on the
-    // sending app (such as BISON) into 'avg_flux'.
+    // Likewise, because this flux represents the reconstruction of either
+    // (1) MOOSE's heat flux onto the transfer mesh (for 'incoming_BC = flux') or
+    // (2) nekRS's flux onto the transfer mesh (for 'incoming_BC = temperature'),
+    // we set the order to match the desired order of the surface.
+    // MOOSE's transfer classes can handle any additional interpolations.
     addAuxVariable("MooseVariable", "avg_flux", var_params);
     _avg_flux_var = _aux->getFieldVariable<Real>(0, "avg_flux").number();
 
     // add the postprocessor that receives the flux integral for normalization
-    auto pp_params = _factory.getValidParams("Receiver");
-    addPostprocessor("Receiver", "flux_integral", pp_params);
+    switch (_incoming_BC)
+    {
+      case incoming::flux:
+      {
+        auto pp_params = _factory.getValidParams("Receiver");
+        addPostprocessor("Receiver", "flux_integral", pp_params);
+        break;
+      }
+      case incoming::temperature:
+      {
+        auto pp_params = _factory.getValidParams("NekHeatFluxIntegral");
+        pp_params.set<std::vector<int>>("boundary") = *_nek_mesh->boundary();
+        addPostprocessor("NekHeatFluxIntegral", "flux_integral", pp_params);
+        break;
+      }
+      default:
+        mooseError("Unhandled BoundaryConditionEnum in NekRSProblem!");
+    }
   }
 
   if (_volume)

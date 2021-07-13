@@ -303,6 +303,110 @@ void volumeSolution(const int order, const bool needs_interpolation, const field
   free(Telem);
 }
 
+void boundaryHeatFlux(const int order, const bool needs_interpolation, double * flux)
+{
+  nrs_t * nrs = (nrs_t *) nrsPtr();
+  mesh_t* mesh = temperatureMesh();
+
+  int start_1d = mesh->Nq;
+  int end_1d = order + 2;
+  int start_2d = start_1d * start_1d;
+  int end_2d = end_1d * end_1d;
+
+  // allocate temporary space to hold the results of the search for each process
+  double* flux_tmp = (double*) calloc(nek_boundary_coupling.n_faces * end_2d, sizeof(double));
+
+  // initialize scratch space for the face solution so that we can easily
+  // pass in face-initialized values to interpolateSurfaceFaceHex3D
+  double* flux_face = (double*) calloc(start_2d, sizeof(double));
+
+  // initialize scratch space for the interpolation process so that we don't need to
+  // allocate and free it for every call to interpolateSurfaceFaceHex3D
+  double* scratch = (double*) calloc(start_1d * end_1d, sizeof(double));
+
+  // if we apply the shortcut for first-order interpolations, just hard-code those
+  // indices that we'll grab for a surface hex element
+  int indices [] = {0, start_1d - 1, start_2d - start_1d, start_2d - 1};
+
+  // compute the temperature gradient
+  double * grad_T = (double *) calloc(3 * scalarFieldOffset(), sizeof(double));
+  gradient(scalarFieldOffset(), nrs->cds->S, grad_T);
+
+  // TODO: This function only works correctly if the conductivity is constant, because
+  // otherwise we need to copy the conductivity from device to host
+  double conductivity;
+  platform->options.getArgs("SCALAR00 DIFFUSIVITY", conductivity);
+
+  int c = 0;
+  for (int k = 0; k < nek_boundary_coupling.total_n_faces; ++k)
+  {
+    if (nek_boundary_coupling.process[k] == commRank())
+    {
+      int i = nek_boundary_coupling.element[k];
+      int j = nek_boundary_coupling.face[k];
+      int offset = i * mesh->Nfaces * start_2d + j * start_2d;
+
+      if (needs_interpolation)
+      {
+        // get the solution on the face
+        for (int v = 0; v < start_2d; ++v)
+        {
+          int vol_id = mesh->vmapM[offset + v];
+          int surf_offset = mesh->Nsgeo * (offset + v);
+
+          double normal_grad_T =
+            grad_T[vol_id + 0 * scalarFieldOffset()] * mesh->sgeo[surf_offset + NXID] +
+            grad_T[vol_id + 1 * scalarFieldOffset()] * mesh->sgeo[surf_offset + NYID] +
+            grad_T[vol_id + 2 * scalarFieldOffset()] * mesh->sgeo[surf_offset + NZID];
+
+          flux_face[v] = -conductivity * normal_grad_T;
+        }
+
+        // and then interpolate it
+        interpolateSurfaceFaceHex3D(scratch, matrix.outgoing, flux_face, start_1d, &(flux_tmp[c]), end_1d);
+        c += end_2d;
+      }
+      else
+      {
+        // get the solution on the face. We assume on the MOOSE side that
+        // we'll only try this shortcut if the mesh is first order (since the second
+        // order case can only skip the interpolation if nekRS's polynomial order is
+        // 2, which is unlikely for actual calculations.
+        for (int v = 0; v < end_2d; ++v, ++c)
+        {
+          int vol_id = mesh->vmapM[offset + indices[v]];
+          int surf_offset = mesh->Nsgeo * (offset + v);
+
+          double normal_grad_T =
+            grad_T[vol_id + 0 * scalarFieldOffset()] * mesh->sgeo[surf_offset + NXID] +
+            grad_T[vol_id + 1 * scalarFieldOffset()] * mesh->sgeo[surf_offset + NYID] +
+            grad_T[vol_id + 2 * scalarFieldOffset()] * mesh->sgeo[surf_offset + NZID];
+
+          flux_tmp[c] = -conductivity * normal_grad_T;
+        }
+      }
+    }
+  }
+
+  // dimensionalize the solution if needed
+  int Nlocal = nek_boundary_coupling.n_faces * end_2d;
+  for (int v = 0; v < Nlocal; ++v)
+    flux_tmp[v] *= scales.flux_ref * scales.A_ref;
+
+  int* recvCounts = (int *) calloc(commSize(), sizeof(int));
+  int* displacement = (int *) calloc(commSize(), sizeof(int));
+  displacementAndCounts(nek_boundary_coupling.counts, recvCounts, displacement, end_2d);
+
+  MPI_Allgatherv(flux_tmp, recvCounts[commRank()], MPI_DOUBLE, flux,
+    (const int*)recvCounts, (const int*)displacement, MPI_DOUBLE, platform->comm.mpiComm);
+
+  free(recvCounts);
+  free(displacement);
+  free(flux_tmp);
+  free(flux_face);
+  free(scratch);
+}
+
 void boundarySolution(const int order, const bool needs_interpolation, const field::NekFieldEnum & field, double * T)
 {
   nrs_t * nrs = (nrs_t *) nrsPtr();

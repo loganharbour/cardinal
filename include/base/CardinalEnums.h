@@ -7,6 +7,7 @@ MooseEnum getNekFieldEnum();
 MooseEnum getOperationEnum();
 MooseEnum getTallyTypeEnum();
 MooseEnum getTallyCellFilterEnum();
+MooseEnum getIncomingBCEnum();
 
 namespace order
 {
@@ -71,5 +72,15 @@ namespace coupling
     temperature,
     density_and_temperature,
     none
+  };
+}
+
+namespace incoming
+{
+  /// Type of boundary condition to apply to NekRS conjugate heat transfer cases
+  enum BoundaryConditionEnum
+  {
+    flux,
+    temperature
   };
 }

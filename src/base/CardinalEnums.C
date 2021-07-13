@@ -24,3 +24,8 @@ MooseEnum getTallyCellFilterEnum()
 {
   return MooseEnum("cell cell_instance", "cell_instance");
 }
+
+MooseEnum getIncomingBCEnum()
+{
+  return MooseEnum("flux temperature", "flux");
+}

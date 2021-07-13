@@ -4,6 +4,7 @@
 #include "NekTimeStepper.h"
 #include "NekRSMesh.h"
 #include "Transient.h"
+#include "CardinalEnums.h"
 
 #include <memory>
 
@@ -65,14 +66,20 @@ public:
   /// Send boundary heat flux to nekRS
   void sendBoundaryHeatFluxToNek();
 
+  /// Send boundary temperature to nekRS
+  void sendBoundaryTemperatureToNek();
+
   /// Send volume mesh deformation flux to nekRS
   void sendVolumeDeformationToNek();
-  
+
   /// Send volume heat source to nekRS
   void sendVolumeHeatSourceToNek();
 
   /// Get boundary temperature from nekRS
   void getBoundaryTemperatureFromNek();
+
+  /// Get boundary heat flux from nekRS
+  void getBoundaryHeatFluxFromNek();
 
   /// Get volume temperature from nekRS
   void getVolumeTemperatureFromNek();
@@ -107,16 +114,20 @@ public:
   virtual bool synchronizeOut();
 
   /**
-   * Determine the maximum interpolated temperature on the NekRSMesh for diagnostic info
-   * \return maximum interpolated surface temperature
+   * Determine the maximum interpolated value on the NekRSMesh for diagnostic info
+   * @param[in] v value
+   * \return maximum interpolated value
    */
-  virtual double maxInterpolatedTemperature() const;
+  virtual double maxInterpolatedValue(const double * v) const;
 
   /**
-   * Determine the minimum interpolated temperature on the NekRSMesh for diagnostic info
-   * \return minimum interpolated surface temperature
+   * Determine the minimum interpolated value on the NekRSMesh for diagnostic info
+   * \return minimum interpolated value
    */
-  virtual double minInterpolatedTemperature() const;
+  virtual double minInterpolatedValue(const double * v) const;
+
+  /// Print diagnostic info regarding the extracted nekRS solution
+  virtual void printExtractedSolution() const;
 
 protected:
   std::unique_ptr<NumericVector<Number>> _serialized_solution;
@@ -173,6 +184,16 @@ protected:
   /// Whether the nekRS solution is performed in nondimensional scales
   const bool & _nondimensional;
 
+  /**
+   * Boundary condition to apply to nekRS for conjugate heat transfer cases;
+   * options: 'flux' (default) and 'temperature'. If 'flux' is set, then nekRS will
+   * send a temperature BC to the coupled MOOSE application, but if 'temperature' is
+   * set, then nekRS will send a heat flux BC to the coupled MOOSE application.
+   * The coupled MOOSE application must be sure to set the appropriate boundary condition
+   * in its model setup.
+   */
+  const incoming::BoundaryConditionEnum _incoming_BC;
+
   //@{
   /**
    * \brief Reference scales for nekRS solution in non-dimensional form.
@@ -224,13 +245,16 @@ protected:
   NekTimeStepper * _timestepper = nullptr;
 
   /**
-   * \brief Total surface-integrated flux coming from the coupled MOOSE app.
+   * \brief Total surface-integrated flux coming from the coupled MOOSE app (for
+   * 'incoming_BC = flux' or coming from nekRS (for 'incoming_BC = temperature')
    *
    * The mesh used for the MOOSE app may be very different from the mesh used by nekRS.
    * Elements may be much finer/coarser, and one element on the MOOSE app may not be a
    * clear subset/superset of the elements on the nekRS mesh. Therefore, to ensure
    * conservation of energy, we send the total flux integral to nekRS for internal
-   * normalization of the heat flux applied on the nekRS mesh.
+   * normalization of the heat flux applied on the nekRS mesh (for 'incoming_BC = flux')
+   * or for use in a conservative MultiApp transfer in the coupled Moose app
+   * (for 'incoming_BC = temperature').
    */
   const PostprocessorValue * _flux_integral = nullptr;
 
@@ -251,16 +275,49 @@ protected:
   /// Postprocessor to limit the maximum temperature
   const PostprocessorValue * _max_T = nullptr;
 
-  /// nekRS temperature interpolated onto the data transfer mesh
+  /**
+   * nekRS temperature interpolated onto the data transfer mesh; only used
+   * when 'incoming_BC = flux' and/or when volume coupling is present,
+   * because then temperature is extracted from nekRS
+   */
   double * _T = nullptr;
 
-  /// MOOSE flux interpolated onto the (boundary) data transfer mesh
+  /**
+   * nekRS flux interpolated onto the data transfer mesh; only used
+   * when 'incoming_BC = temperature', because then flux is extracted from nekRS
+   */
+  double * _flux = nullptr;
+
+  /**
+   * MOOSE flux interpolated onto the (boundary) data transfer mesh; only used
+   * when 'incoming_BC = flux'
+   */
   double * _flux_face = nullptr;
 
-  /// MOOSE flux interpolated onto the (volume) data transfer mesh
+  /**
+   * MOOSE temperature interpolated onto the (boundary) data transfer mesh; only used
+   * when 'incoming_BC = temperature'
+   */
+  double * _T_face = nullptr;
+
+  /**
+   * MOOSE flux interpolated onto the (volume) data transfer mesh; only used when
+   * 'incoming_BC = flux' and volume coupling is present, because then heat flux
+   * is sent into nekRS
+   */
   double * _flux_elem = nullptr;
 
-  /// MOOSE heat source interpolated onto the data transfer mesh
+  /**
+   * MOOSE flux interpolated onto the (volume) data transfer mesh; only used when
+   * 'incoming_BC = temperature' and volume coupling is present, because then temperature
+   * is sent into nekRS
+   */
+  double * _T_elem = nullptr;
+
+  /**
+   * MOOSE heat source interpolated onto the data transfer mesh; only used when
+   * volume coupling is present, because then a heat source is sent into nekRS
+   */
   double * _source_elem = nullptr;
 
   /// displacement in x for all nodes from MOOSE, for moving mesh problems
@@ -272,10 +329,18 @@ protected:
   /// displacement in z for all nodes from MOOSE, for moving mesh problems
   double * _displacement_z = nullptr;
 
-  /// temperature transfer variable written to be nekRS
+  /**
+   * Temperature transfer variable; for 'incoming_BC = flux', this variable
+   * is written by nekRS. For 'incoming_BC = temperature', this variable instead
+   * receives temperature from a coupled MOOSE application, and the temperature is
+   * sent into nekRS.
+   */
   unsigned int _temp_var;
 
-  /// flux transfer variable read from by nekRS
+  /**
+   * Flux transfer variable; for 'incoming_BC = flux', this variable is read by nekRS.
+   * For 'incoming_BC = temperature', this variable is written by nekRS.
+   */
   unsigned int _avg_flux_var;
 
   /// x-displacment transfer variable read from for moving mesh problems

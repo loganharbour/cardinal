@@ -146,6 +146,14 @@ void initializeInterpolationMatrices(const int n_moost_pts);
 void boundarySolution(const int order, const bool needs_interpolation, const field::NekFieldEnum & f, double* T);
 
 /**
+ * Interpolate the nekRS boundary heat flux onto the boundary data transfer mesh
+ * @param[in] order enumeration of the surface mesh order (0 = first, 1 = second, etc.)
+ * @param[in] needs_interpolation whether an interpolation matrix needs to be used to figure out the interpolation
+ * @param[out] flux interpolated boundary value
+ */
+void boundaryHeatFlux(const int order, const bool needs_interpolation, double* flux);
+
+/**
  * Interpolate the nekRS volume solution onto the volume data transfer mesh
  * @param[in] order enumeration of the mesh order (0 = first, 1 = second, etc.)
  * @param[in] needs_interpolation whether an interpolation matrix needs to be used to figure out the interpolation
