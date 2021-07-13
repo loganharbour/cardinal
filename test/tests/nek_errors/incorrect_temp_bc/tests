@@ -1,0 +1,16 @@
+[Tests]
+  [./missing_flux_bc]
+    type = RunException
+    input = nek.i
+
+    # nekRS can't use more processors than elements
+    max_parallel = 12
+
+    expect_err = "In order to send a boundary temperature to nekRS, you must have a Dirichlet condition "
+                 "for each 'boundary' set in 'NekRSMesh'!\nBoundary 2 is of type 'zeroGradient' "
+                 "instead of 'fixedValue'."
+    cli_args = '--app nek --nekrs-setup brick'
+    requirement = "MOOSE shall throw an error if there is no receiving temperature boundary condition "
+                  "on the nekRS boundaries that are coupled to MOOSE."
+  [../]
+[]
