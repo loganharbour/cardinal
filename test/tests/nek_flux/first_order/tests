@@ -1,0 +1,17 @@
+[Tests]
+  [./first_order_flux]
+    type = Exodiff
+    input = nek.i
+    exodiff = nek_out.e
+    cli_args = '--app nek --nekrs-setup pyramid'
+    abs_zero = 1e-5
+    rel_err = 5e-5
+    requirement = "The nekRS flux solution shall be accurately reconstructed on "
+                  "the nekRSMesh with a first-order surface transfer. By setting an intial condition "
+                  "for temperature on the nekRS side and then setting 'solver = none', we show "
+                  "that the max/min error in that reconstructed flux compared to a MOOSE "
+                  "function of the same form is O(1e-2) (perfect agreement is not to be expected, "
+                  "since MOOSE can only compute a heat flux as a constant monomial field, while this "
+                  "test uses 5th polynomial order in nekRS."
+  [../]
+[]
