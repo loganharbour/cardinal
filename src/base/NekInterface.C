@@ -497,7 +497,7 @@ void boundarySolution(const int order, const bool needs_interpolation, const fie
   free(scratch);
 }
 
-void flux_volume(const int elem_id, const int order, double * flux_elem)
+void writeVolumeSolution(const int slice, const int elem_id, const int order, double * elem)
 {
   nrs_t * nrs = (nrs_t *) nrsPtr();
   mesh_t * mesh = temperatureMesh();
@@ -511,45 +511,19 @@ void flux_volume(const int elem_id, const int order, double * flux_elem)
   if (commRank() == nek_volume_coupling.processor_id(elem_id))
   {
     int e = nek_volume_coupling.element[elem_id];
-    double * flux_tmp = (double*) calloc(mesh->Np, sizeof(double));
+    double * tmp = (double*) calloc(mesh->Np, sizeof(double));
 
-    interpolateVolumeHex3D(matrix.incoming, flux_elem, start_1d, flux_tmp, end_1d);
-
-    int id = e * mesh->Np;
-    for (int v = 0; v < mesh->Np; ++v)
-      nrs->usrwrk[id + v] = flux_tmp[v];
-
-    free(flux_tmp);
-  }
-}
-
-void heat_source(const int elem_id, const int order, double * source_elem)
-{
-  nrs_t * nrs = (nrs_t *) nrsPtr();
-  mesh_t * mesh = temperatureMesh();
-
-  int end_1d = mesh->Nq;
-  int start_1d = order + 2;
-  int end_3d = mesh->Np;
-  int start_3d = start_1d * start_1d * start_1d;
-
-  // We can only write into the nekRS scratch space if that face is "owned" by the current process
-  if (commRank() == nek_volume_coupling.processor_id(elem_id))
-  {
-    int e = nek_volume_coupling.element[elem_id];
-    double * source_tmp = (double*) calloc(mesh->Np, sizeof(double));
-
-    interpolateVolumeHex3D(matrix.incoming, source_elem, start_1d, source_tmp, end_1d);
+    interpolateVolumeHex3D(matrix.incoming, elem, start_1d, tmp, end_1d);
 
     int id = e * mesh->Np;
     for (int v = 0; v < mesh->Np; ++v)
-      nrs->usrwrk[scalarFieldOffset() + id + v] = source_tmp[v];
+      nrs->usrwrk[id + v + slice * scalarFieldOffset()] = tmp[v];
 
-    free(source_tmp);
+    free(tmp);
   }
 }
 
-void flux(const int elem_id, const int order, double * flux_face)
+void writeBoundarySolution(const int slice, const int elem_id, const int order, double * face)
 {
   nrs_t * nrs = (nrs_t *) nrsPtr();
   mesh_t * mesh = temperatureMesh();
@@ -557,7 +531,6 @@ void flux(const int elem_id, const int order, double * flux_face)
   int end_1d = mesh->Nq;
   int start_1d = order + 2;
   int end_2d = end_1d * end_1d;
-  // int start_2d = start_1d * start_1d;
 
   // We can only write into the nekRS scratch space if that face is "owned" by the current process
   if (commRank() == nek_boundary_coupling.processor_id(elem_id))
@@ -566,19 +539,19 @@ void flux(const int elem_id, const int order, double * flux_face)
     int f = nek_boundary_coupling.face[elem_id];
 
     double * scratch = (double*) calloc(start_1d * end_1d, sizeof(double));
-    double * flux_tmp = (double*) calloc(end_2d, sizeof(double));
+    double * tmp = (double*) calloc(end_2d, sizeof(double));
 
-    interpolateSurfaceFaceHex3D(scratch, matrix.incoming, flux_face, start_1d, flux_tmp, end_1d);
+    interpolateSurfaceFaceHex3D(scratch, matrix.incoming, face, start_1d, tmp, end_1d);
 
     int offset = e * mesh->Nfaces * mesh->Nfp + f * mesh->Nfp;
     for (int i = 0; i < end_2d; ++i)
     {
       int id = mesh->vmapM[offset + i];
-      nrs->usrwrk[id] = flux_tmp[i];
+      nrs->usrwrk[id + slice * scalarFieldOffset()] = tmp[i];
     }
 
     free(scratch);
-    free(flux_tmp);
+    free(tmp);
   }
 }
 
@@ -1775,6 +1748,16 @@ namespace solution
   double referenceSource()
   {
     return scales.source_ref;
+  }
+
+  double referenceTemperature()
+  {
+    return scales.T_ref;
+  }
+
+  double referenceTemperatureIncrement()
+  {
+    return scales.dT_ref;
   }
 
   void dimensionalize(const field::NekFieldEnum & field, double & value)

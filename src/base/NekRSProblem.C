@@ -221,7 +221,6 @@ NekRSProblem::~NekRSProblem()
   if (!isOutputStep())
     nekrs::outfld(_timestepper->nondimensionalDT(_time));
 
-
   if (_T) free(_T);
   if (_flux) free(_flux);
   if (_flux_face) free(_flux_face);
@@ -486,26 +485,125 @@ void
 NekRSProblem::sendBoundaryTemperatureToNek()
 {
   _console << "Sending temperature to nekRS boundary " << Moose::stringify(*_boundary) << "... ";
-  _console << "done" << std::endl;
+  serializeAuxSolution();
+
+  auto sys_number = _aux->number();
+  auto & mesh = _nek_mesh->getMesh();
+
+  double maximum = std::numeric_limits<double>::min();
+  double minimum = std::numeric_limits<double>::max();
+
+  if (!_volume)
+  {
+    for (unsigned int e = 0; e < _n_surface_elems; e++)
+    {
+      auto elem_ptr = mesh.query_elem_ptr(e);
+
+      // Only work on elements we can find on our local chunk of a
+      // distributed mesh
+      if (!elem_ptr)
+        {
+          libmesh_assert(!mesh.is_serial());
+          continue;
+        }
+
+      for (unsigned int n = 0; n < _n_vertices_per_surface; n++)
+      {
+        auto node_ptr = elem_ptr->node_ptr(n);
+
+        // For each face, get the temperature at the libMesh nodes. This will be passed into
+        // nekRS, which will interpolate onto its GLL points. Because we are looping over
+        // nodes from libMesh, we need to get the GLL index known by nekRS and use it to
+        // determine the offset in the nekRS arrays.
+        int node_index = _nek_mesh->boundaryNodeIndex(n);
+        auto node_offset = e * _n_vertices_per_surface + node_index;
+        auto dof_idx = node_ptr->dof_number(sys_number, _temp_var, 0);
+        _T_face[node_index] = (*_serialized_solution)(dof_idx);
+        maximum = std::max(maximum, _T_face[node_index]);
+        minimum = std::min(minimum, _T_face[node_index]);
+
+        // non-dimensionalize the temperature if needed
+        _T_face[node_index] = (_T_face[node_index] - nekrs::solution::referenceTemperature()) /
+          nekrs::solution::referenceTemperatureIncrement();
+      }
+
+      // Now that we have the temperature at the nodes of the NekRSMesh, we can interpolate them
+      // onto the nekRS GLL points
+      nekrs::writeBoundarySolution(0 /* first slice of scratch space */, e, _nek_mesh->order(), _T_face);
+    }
+  }
+  else if (_volume)
+  {
+    // For the case of a boundary-only coupling, we could just loop over the elements on
+    // the boundary of interest and write (carefully) into the volume nrs-usrwrk array. Now,
+    // our temperature variable is defined over the entire volume (maybe the MOOSE transfer only sent
+    // meaningful values to the coupling boundaries), so we need to do a volume interpolation
+    // of the temperature into nrs->usrwrk, rather than a face interpolation. This could definitely be
+    // optimized in the future to truly only just write the boundary values into the nekRS
+    // scratch space rather than the volume values, but it looks right now that our biggest
+    // expense occurs in the MOOSE transfer system, not these transfers internally to nekRS.
+    for (unsigned int e = 0; e < _n_volume_elems; ++e)
+    {
+      int n_faces_on_boundary = nekrs::mesh::facesOnBoundary(e);
+
+      auto elem_ptr = mesh.query_elem_ptr(e);
+
+      // Only work on elements we can find on our local chunk of a
+      // distributed mesh
+      if (!elem_ptr)
+        {
+          libmesh_assert(!mesh.is_serial());
+          continue;
+        }
+
+      // though the temperature is a volume field, the only meaningful values are on the coupling
+      // boundaries, so we can just skip this interpolation if this volume element isn't on
+      // a coupling boundary, because that flux data isn't used anyways
+      if (n_faces_on_boundary > 0)
+      {
+        auto elem_ptr = mesh.elem_ptr(e);
+
+        for (unsigned int n = 0; n < _n_vertices_per_volume; ++n)
+        {
+          auto node_ptr = elem_ptr->node_ptr(n);
+
+          // For each element, get the temperature at the libMesh nodes. This will be passed into
+          // nekRS, which will interpolate onto its GLL points. Because we are looping over
+          // nodes from libMesh, we need to get the GLL index known by nekRS and use it to
+          // determine the offset in the nekRS arrays.
+          int node_index = _nek_mesh->volumeNodeIndex(n);
+          auto node_offset = e * _n_vertices_per_volume + node_index;
+          auto dof_idx = node_ptr->dof_number(sys_number, _avg_flux_var, 0);
+          _T_elem[node_index] = (*_serialized_solution)(dof_idx);
+          maximum = std::max(maximum, _T_face[node_index]);
+          minimum = std::min(minimum, _T_face[node_index]);
+
+          // non-dimensionalize the temperature if needed
+          _T_elem[node_index] = (_T_elem[node_index] - nekrs::solution::referenceTemperature()) /
+            nekrs::solution::referenceTemperatureIncrement();
+        }
+
+        // Now that we have the temperature at the nodes of the NekRSMesh, we can interpolate them
+        // onto the nekRS GLL points
+        nekrs::writeVolumeSolution(0 /* first slice in scratch space */, e, _nek_mesh->order(), _T_elem);
+      }
+    }
+  }
+
+  _console << "done. Sent min/max values: " << minimum << ", " << maximum << std::endl;
 }
 
 void
 NekRSProblem::sendBoundaryHeatFluxToNek()
 {
   _console << "Sending heat flux to nekRS boundary " << Moose::stringify(*_boundary) << "... ";
+  serializeAuxSolution();
 
-  auto & solution = _aux->solution();
   auto sys_number = _aux->number();
-
-  if (_first)
-  {
-    _serialized_solution->init(_aux->sys().n_dofs(), false, SERIAL);
-    _first = false;
-  }
-
-  solution.localize(*_serialized_solution);
-
   auto & mesh = _nek_mesh->getMesh();
+
+  double maximum = std::numeric_limits<double>::min();
+  double minimum = std::numeric_limits<double>::max();
 
   if (!_volume)
   {
@@ -532,12 +630,16 @@ NekRSProblem::sendBoundaryHeatFluxToNek()
         int node_index = _nek_mesh->boundaryNodeIndex(n);
         auto node_offset = e * _n_vertices_per_surface + node_index;
         auto dof_idx = node_ptr->dof_number(sys_number, _avg_flux_var, 0);
-        _flux_face[node_index] = (*_serialized_solution)(dof_idx) / nekrs::solution::referenceFlux();
+        _flux_face[node_index] = (*_serialized_solution)(dof_idx);
+        maximum = std::max(maximum, _flux_face[node_index]);
+        minimum = std::min(minimum, _flux_face[node_index]);
+
+       _flux_face[node_index] /= nekrs::solution::referenceFlux();
       }
 
       // Now that we have the flux at the nodes of the NekRSMesh, we can interpolate them
       // onto the nekRS GLL points
-      nekrs::flux(e, _nek_mesh->order(), _flux_face);
+      nekrs::writeBoundarySolution(0 /* first slice of scratch space */, e, _nek_mesh->order(), _flux_face);
     }
   }
   else if (_volume)
@@ -582,17 +684,21 @@ NekRSProblem::sendBoundaryHeatFluxToNek()
           int node_index = _nek_mesh->volumeNodeIndex(n);
           auto node_offset = e * _n_vertices_per_volume + node_index;
           auto dof_idx = node_ptr->dof_number(sys_number, _avg_flux_var, 0);
-          _flux_elem[node_index] = (*_serialized_solution)(dof_idx) / nekrs::solution::referenceFlux();
+          _flux_elem[node_index] = (*_serialized_solution)(dof_idx);
+          maximum = std::max(maximum, _flux_face[node_index]);
+          minimum = std::min(minimum, _flux_face[node_index]);
+
+          _flux_elem[node_index] /= nekrs::solution::referenceFlux();
         }
 
         // Now that we have the flux at the nodes of the NekRSMesh, we can interpolate them
         // onto the nekRS GLL points
-        nekrs::flux_volume(e, _nek_mesh->order(), _flux_elem);
+        nekrs::writeVolumeSolution(0 /* first slice in scratch space */, e, _nek_mesh->order(), _flux_elem);
       }
     }
   }
 
-  _console << "done" << std::endl;
+  _console << "done. Sent min/max values: " << minimum << ", " << maximum << std::endl;
 
   // Because the NekMesh may be quite different from that used in the app solving for
   // the heat flux, we will need to normalize the total flux on the nekRS side by the
@@ -635,18 +741,9 @@ void
 NekRSProblem::sendVolumeDeformationToNek()
 {
   _console << "Sending volume deformation to nekRS... ";
+  serializeAuxSolution();
 
-  auto & solution = _aux->solution();
   auto sys_number = _aux->number();
-
-  if (_first)
-  {
-    _serialized_solution->init(_aux->sys().n_dofs(), false, SERIAL);
-    _first = false;
-  }
-
-  solution.localize(*_serialized_solution);
-
   auto & mesh = _nek_mesh->getMesh();
 
   for (unsigned int e = 0; e < _n_volume_elems; e++)
@@ -690,12 +787,9 @@ NekRSProblem::sendVolumeDeformationToNek()
 }
 
 void
-NekRSProblem::sendVolumeHeatSourceToNek()
+NekRSProblem::serializeAuxSolution()
 {
-  _console << "Sending heat source to nekRS volume... ";
-
   auto & solution = _aux->solution();
-  auto sys_number = _aux->number();
 
   if (_first)
   {
@@ -704,8 +798,19 @@ NekRSProblem::sendVolumeHeatSourceToNek()
   }
 
   solution.localize(*_serialized_solution);
+}
 
+void
+NekRSProblem::sendVolumeHeatSourceToNek()
+{
+  _console << "Sending heat source to nekRS volume... ";
+  serializeAuxSolution();
+
+  auto sys_number = _aux->number();
   auto & mesh = _nek_mesh->getMesh();
+
+  double maximum = std::numeric_limits<double>::min();
+  double minimum = std::numeric_limits<double>::max();
 
   for (unsigned int e = 0; e < _n_volume_elems; e++)
   {
@@ -731,15 +836,19 @@ NekRSProblem::sendVolumeHeatSourceToNek()
       auto node_offset = e * _n_vertices_per_volume + node_index;
 
       auto dof_idx = node_ptr->dof_number(sys_number, _heat_source_var, 0);
-      _source_elem[node_index] = (*_serialized_solution)(dof_idx) / nekrs::solution::referenceSource();
+      _source_elem[node_index] = (*_serialized_solution)(dof_idx);
+      maximum = std::max(maximum, _source_elem[node_index]);
+      minimum = std::min(minimum, _source_elem[node_index]);
+
+      _source_elem[node_index] /= nekrs::solution::referenceSource();
     }
 
     // Now that we have the heat source at the nodes of the NekRSMesh, we can interpolate them
     // onto the nekRS GLL points
-    nekrs::heat_source(e, _nek_mesh->order(), _source_elem);
+    nekrs::writeVolumeSolution(1 /* second slice of scratch space */, e, _nek_mesh->order(), _source_elem);
   }
 
-  _console << "done" << std::endl;
+  _console << "done. Sent min/max values: " << minimum << ", " << maximum << std::endl;
 
   // Because the NekMesh may be quite different from that used in the app solving for
   // the heat source, we will need to normalize the total source on the nekRS side by the

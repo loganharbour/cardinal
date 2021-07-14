@@ -63,6 +63,9 @@ public:
    */
   virtual void fillAuxVariable(const unsigned int var_number, const double * value);
 
+  /// Serialize the auxiliary solution
+  virtual void serializeAuxSolution();
+
   /// Send boundary heat flux to nekRS
   void sendBoundaryHeatFluxToNek();
 

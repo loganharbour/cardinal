@@ -163,28 +163,22 @@ void boundaryHeatFlux(const int order, const bool needs_interpolation, double* f
 void volumeSolution(const int order, const bool needs_interpolation, const field::NekFieldEnum & f, double* T);
 
 /**
- * Interpolate the MOOSE flux onto the nekRS mesh
+ * Interpolate a MOOSE boundary quantity onto the nekRS mesh
+ * @param[in] slice offset into nrs->usrwrk to write the solution
  * @param[in] elem_id global element ID
  * @param[in] order enumeration of the surface mesh order (0 = first, 1 = second, etc.)
- * @param[in] flux_face flux at the libMesh nodes
+ * @param[in] face face values at the libMesh nodes
  */
- void flux(const int elem_id, const int order, double * flux_face);
+ void writeBoundarySolution(const int slice, const int elem_id, const int order, double * face);
 
 /**
- * Interpolate a volume-based MOOSE flux into the nekRS mesh
+ * Interpolate a volume-based MOOSE quantity into the nekRS mesh
+ * @param[in] slice offset into nrs->usrwrk to write the solution
  * @param[in] elem_id global element ID
  * @param[in] order enumeration of the surface mesh order (0 = first, 1 = second, etc.)
- * @param[in] flux_elem flux at the libMesh nodes
+ * @param[in] elem volume values at the libMesh nodes
  */
-void flux_volume(const int elem_id, const int order, double * flux_elem);
-
-/**
- * Interpolate the MOOSE volume heat source onto the nekRS mesh
- * @param[in] elem_id global element ID
- * @param[in] order enumeration of the volume mesh order (0 = first, 1 = second, etc.)
- * @param[in] source_elem heat source at the libMesh nodes
- */
-void heat_source(const int elem_id, const int order, double * source_elem);
+void writeVolumeSolution(const int slice, const int elem_id, const int order, double * elem);
 
 /**
  * Save the initial mesh in nekRS for moving mesh problems
@@ -677,6 +671,18 @@ double referenceFlux();
  * @return reference heat source scale
  */
 double referenceSource();
+
+/**
+ * Get the reference temperature
+ * @return reference temperature
+ */
+double referenceTemperature();
+
+/**
+ * Get the reference temperature increment
+ * @return reference temperature increment
+ */
+double referenceTemperatureIncrement();
 
 } // end namespace solution
 
