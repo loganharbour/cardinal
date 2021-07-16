@@ -1,0 +1,10 @@
+[Tests]
+  [./incorrect_problem]
+    type = RunException
+    input = nek.i
+    cli_args = '--app nek'
+    expect_err = "Nek postprocessors can only be used with NekRSProblem!"
+    requirement = "The system shall error if a Nek postprocessor is used without the correct "
+                  "NekRS wrapped problem."
+  [../]
+[]
