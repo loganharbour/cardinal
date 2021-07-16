@@ -1,0 +1,10 @@
+[Tests]
+  [./incorrect_problem]
+    type = RunException
+    input = openmc.i
+    cli_args = '--app openmc'
+    expect_err = "OpenMC postprocessors can only be used with OpenMCCellAverageProblem!"
+    requirement = "The system shall error if an OpenMC postprocessor is used without the correct "
+                  "OpenMC wrapped problem."
+  [../]
+[]

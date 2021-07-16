@@ -1,0 +1,198 @@
+<?xml version='1.0' encoding='utf-8'?>
+<materials>
+  <material id="1" name="HT-9">
+    <density units="sum" />
+    <nuclide ao="0.0043379995278989445" name="Fe54" />
+    <nuclide ao="0.06809731542905727" name="Fe56" />
+    <nuclide ao="0.0015726639862477096" name="Fe57" />
+    <nuclide ao="0.00020929270605089857" name="Fe58" />
+    <nuclide ao="0.00031151958236548554" name="Ni58" />
+    <nuclide ao="0.00011999678540486369" name="Ni60" />
+    <nuclide ao="5.216177175200648e-06" name="Ni61" />
+    <nuclide ao="1.6631455341053386e-05" name="Ni62" />
+    <nuclide ao="4.235541357457426e-06" name="Ni64" />
+    <nuclide ao="0.00047949020350653124" name="Cr50" />
+    <nuclide ao="0.009246491291509493" name="Cr52" />
+    <nuclide ao="0.0010484778880358004" name="Cr53" />
+    <nuclide ao="0.00026098833861747903" name="Cr54" />
+    <nuclide ao="5.083632484290505e-05" name="Mo100" />
+    <nuclide ao="7.642665462066052e-05" name="Mo92" />
+    <nuclide ao="4.7930348556216e-05" name="Mo94" />
+    <nuclide ao="8.281249838171511e-05" name="Mo95" />
+    <nuclide ao="8.698625247390762e-05" name="Mo96" />
+    <nuclide ao="4.999113963923607e-05" name="Mo97" />
+    <nuclide ao="0.00012673604300942628" name="Mo98" />
+    <nuclide ao="0.0004888662886617558" name="Mn55" />
+  </material>
+  <material depletable="true" id="2" name="fuel">
+    <density units="sum" />
+    <nuclide ao="1.0856e-06" name="U234" />
+    <nuclide ao="2.9338e-05" name="U235" />
+    <nuclide ao="2.5117e-06" name="U236" />
+    <nuclide ao="0.019474" name="U238" />
+    <nuclide ao="4.6962e-05" name="Np237" />
+    <nuclide ao="5.5883e-10" name="Pu236" />
+    <nuclide ao="0.00011284" name="Pu238" />
+    <nuclide ao="0.0021814" name="Pu239" />
+    <nuclide ao="0.0012955" name="Pu240" />
+    <nuclide ao="0.0001861" name="Pu241" />
+    <nuclide ao="0.00028911" name="Pu242" />
+    <nuclide ao="0.00010465" name="Am241" />
+    <nuclide ao="9.0848e-06" name="Am242_m1" />
+    <nuclide ao="9.8324e-05" name="Am243" />
+    <nuclide ao="5.8208e-06" name="Cm242" />
+    <nuclide ao="5.0246e-07" name="Cm243" />
+    <nuclide ao="6.5722e-05" name="Cm244" />
+    <nuclide ao="1.6743e-05" name="Cm245" />
+    <nuclide ao="9.1426e-06" name="Cm246" />
+    <nuclide ao="0.0037456628999999997" name="Zr90" />
+    <nuclide ao="0.0008168384399999999" name="Zr91" />
+    <nuclide ao="0.0012485543000000001" name="Zr92" />
+    <nuclide ao="0.00126529876" name="Zr94" />
+    <nuclide ao="0.00020384559999999999" name="Zr96" />
+  </material>
+  <material id="3" name="sodium0">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="4" name="sodium1">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="5" name="sodium2">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="6" name="sodium3">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="7" name="sodium4">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="8" name="sodium5">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="9" name="sodium6">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="10" name="sodium7">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="11" name="sodium8">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="12" name="sodium9">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="13" name="sodium10">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="14" name="sodium11">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="15" name="sodium12">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="16" name="sodium13">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="17" name="sodium14">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="18" name="sodium15">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="19" name="sodium16">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="20" name="sodium17">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="21" name="sodium18">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="22" name="sodium19">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="23" name="sodium20">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="24" name="sodium21">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="25" name="sodium22">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="26" name="sodium23">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="27" name="sodium24">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="28" name="sodium25">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="29" name="sodium26">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="30" name="sodium27">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="31" name="sodium28">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="32" name="sodium29">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="33" name="sodium30">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="34" name="sodium31">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="35" name="sodium32">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="36" name="sodium33">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="37" name="sodium34">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+  <material id="38" name="sodium35">
+    <density units="kg/m3" value="847.7911985240651" />
+    <nuclide ao="1.0" name="Na23" />
+  </material>
+</materials>
