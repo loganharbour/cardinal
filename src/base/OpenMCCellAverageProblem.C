@@ -239,8 +239,7 @@ OpenMCCellAverageProblem::checkMeshTemplateAndTranslations()
   {
     const auto & filter = _mesh_filters[i];
 
-    // just compare the first two elements
-    for (unsigned int e = 0; e < 2; ++e)
+    for (unsigned int e = 0; e < filter->n_bins(); ++e)
     {
       auto elem_ptr = _mesh.queryElemPtr(offset + e);
 
@@ -915,9 +914,11 @@ OpenMCCellAverageProblem::initializeTallies()
           volume += _mesh_template->volume(e);
 
         if (_verbose)
-          _console << " Mesh translated to (" << std::setw(4) << translation(0) << ", " <<
-            std::setw(4) << translation(1) << ", " << std::setw(4) << translation(2) <<
-            "): " << std::setw(6) << _local_tally.at(i)->n_filter_bins() << " elements  |  volume (cm3): " << std::setw(6) << volume << std::endl;
+          _console << " Mesh translated to (" <<
+            std::setprecision(4) << std::setw(8) << translation(0) << ", " <<
+            std::setprecision(4) << std::setw(8) << translation(1) << ", " <<
+            std::setprecision(4) << std::setw(8) << translation(2) << "): " <<
+            std::setw(6) << _local_tally.at(i)->n_filter_bins() << " elements  |  volume (cm3): " << std::setw(6) << volume << std::endl;
       }
 
       // TODO: can add the assume_separate setting for a bit of additional performance
