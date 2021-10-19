@@ -453,6 +453,9 @@ protected:
   /// Extract user-specified additional output fields from OpenMC
   void extractOutputs();
 
+  void compareContainedCells(std::map<cellInfo, containedCells> & reference,
+  std::map<cellInfo, containedCells> & compare);
+
   std::unique_ptr<NumericVector<Number>> _serialized_solution;
 
   /**
@@ -599,6 +602,10 @@ protected:
    */
   const bool & _check_equal_mapped_tally_volumes;
 
+  const bool & _identical_tally_cell_fills;
+
+  const bool & _check_identical_tally_cell_fills;
+
   /**
    * Whether the problem has fluid blocks specified; note that this is NOT necessarily
    * indicative that the mapping was successful in finding any cells corresponding to those blocks
@@ -730,9 +737,6 @@ protected:
    */
   const bool _single_coord_level;
 
-  /// Total number of OpenMC cells, across all coordinate levels
-  const int _n_openmc_cells;
-
   /**
    * Number of digits to use to display the cell ID for diagnostic messages; this is
    * estimated conservatively based on the total number of cells, even though there
@@ -746,6 +750,9 @@ protected:
    * tally_blocks to be all of the subdomains in the MOOSE mesh.
    */
   const bool _using_default_tally_blocks;
+
+  /// Total number of OpenMC cells, across all coordinate levels
+  int _n_openmc_cells;
 
   /**
    * Mesh template file to use for creating mesh tallies in OpenMC; currently, this mesh

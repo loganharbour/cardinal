@@ -96,6 +96,13 @@ validParams<OpenMCCellAverageProblem>()
   params.addParam<unsigned int>("fluid_cell_level", "Coordinate level in OpenMC to stop at for identifying fluid cells");
   params.addParam<unsigned int>("lowest_fluid_cell_level", "Lowest coordinate level in OpenMC to use for identifying fluid cells");
 
+  params.addParam<bool>("identical_tally_cell_fills", false, "Whether the tallied cells have identical "
+    "fill universes; this is an optimization to speed up initialization for TRISO problems "
+    "where each TRISO pebble/compact/plate/etc. has exactly the same universe filling it.");
+  params.addParam<bool>("check_identical_tally_cell_fills", false,
+    "Whether to check that your model does indeed have identical tally cell fills, allowing "
+    "you to set 'identical_tally_cell_fills = true' to speed up initialization");
+
   MultiMooseEnum openmc_outputs("fission_tally_std_dev");
   params.addParam<MultiMooseEnum>("output", openmc_outputs, "Field(s) to output from OpenMC onto the mesh mirror");
   return params;
@@ -115,12 +122,13 @@ OpenMCCellAverageProblem::OpenMCCellAverageProblem(const InputParameters &params
   _normalize_by_global(getParam<bool>("normalize_by_global_tally")),
   _check_tally_sum(isParamValid("check_tally_sum") ? getParam<bool>("check_tally_sum") : _normalize_by_global),
   _check_equal_mapped_tally_volumes(getParam<bool>("check_equal_mapped_tally_volumes")),
+  _identical_tally_cell_fills(getParam<bool>("identical_tally_cell_fills")),
+  _check_identical_tally_cell_fills(getParam<bool>("check_identical_tally_cell_fills")),
   _has_fluid_blocks(params.isParamSetByUser("fluid_blocks")),
   _has_solid_blocks(params.isParamSetByUser("solid_blocks")),
   _needs_global_tally(_check_tally_sum || _normalize_by_global),
   _single_coord_level(openmc::model::n_coord_levels == 1),
-  _n_openmc_cells(openmc::model::cells.size()),
-  _n_cell_digits(digits(_n_openmc_cells)),
+  _n_cell_digits(digits(openmc::model::cells.size())),
   _using_default_tally_blocks(_tally_type == tally::cell && _single_coord_level && !isParamValid("tally_blocks"))
 {
   if (openmc::settings::libmesh_comm)
@@ -147,6 +155,10 @@ OpenMCCellAverageProblem::OpenMCCellAverageProblem(const InputParameters &params
       mooseError("In attempting to set the number of batches, OpenMC reported:\n\n" +
         std::string(openmc_err_msg));
   }
+
+  if (isParamValid("check_identical_tally_cell_fills") && !_identical_tally_cell_fills)
+    mooseWarning("The 'check_identical_tally_cell_fills' parameter is unused when 'identical_tally_cell_fills' "
+      "is false");
 
   // for cases where OpenMC is the master app and we have two sub-apps that represent (1) fluid region,
   // and (2) solid region, we can save on one transfer if OpenMC computes the heat flux from a transferred
@@ -739,6 +751,10 @@ OpenMCCellAverageProblem::initializeElementToCellMapping()
    */
 
   { // scope only exists for the timed print
+    _n_openmc_cells = 0.0;
+    for (const auto & c : openmc::model::cells)
+      _n_openmc_cells += c->n_instances_;
+
     _console << "Initializing mapping between " + Moose::stringify(_mesh.nElem()) +
       " MOOSE elements and " + Moose::stringify(_n_openmc_cells) + " OpenMC cells (on " +
       Moose::stringify(openmc::model::n_coord_levels) + " coordinate levels)..." << std::endl;
@@ -824,6 +840,17 @@ OpenMCCellAverageProblem::cacheContainedCells()
 {
   TIME_SECTION("cacheContainedCells", 3, "Caching Contained Cells", true);
 
+  bool first_tally_cell = true;
+  bool second_tally_cell = false;
+  containedCells first_tally_cell_contained_cells;
+  containedCells second_tally_cell_contained_cells;
+  containedCells instance_offsets;
+
+  // if we are checking for identical fills, we will populate this and check that
+  // it exactly matches _cell_to_contained_material_fills
+  std::map<cellInfo, containedCells> checking_cell_fills;
+
+  int i = -1;
   for (const auto & c : _cell_to_elem)
   {
     auto cell_info = c.first;
@@ -834,13 +861,155 @@ OpenMCCellAverageProblem::cacheContainedCells()
     {
       std::vector<int32_t> instances = {cell_info.second};
       contained_cells[cell_info.first] = instances;
+
+      if (_check_identical_tally_cell_fills)
+        checking_cell_fills[cell_info] = contained_cells;
     }
     else
     {
-      contained_cells = cell->get_contained_cells(cell_info.second);
+      if (_identical_tally_cell_fills && _cell_has_tally[cell_info])
+      {
+        i += 1;
+
+        // the first time we get to a tally cell, we definitely need to do the full search
+        if (first_tally_cell)
+        {
+          first_tally_cell_contained_cells = cell->get_contained_cells(cell_info.second, true /* do full search */);
+          contained_cells = first_tally_cell_contained_cells;
+          first_tally_cell = false;
+          second_tally_cell = true;
+        }
+        else if (second_tally_cell)
+        {
+          second_tally_cell_contained_cells = cell->get_contained_cells(cell_info.second, true /* do full search */);
+          contained_cells = second_tally_cell_contained_cells;
+          second_tally_cell = false;
+
+          // get the offset for each instance for each contained cell: TODO errors
+          for (const auto & f : first_tally_cell_contained_cells)
+          {
+            const auto id = f.first;
+            const auto & instances = f.second;
+            const auto & new_instances = second_tally_cell_contained_cells[id];
+
+            std::vector<int32_t> offsets;
+            for (unsigned int i = 0; i < instances.size(); ++i)
+              offsets.push_back(new_instances[i] - instances[i]);
+
+            instance_offsets[id] = offsets;
+          }
+        }
+        else
+        {
+          containedCells nth_tally_cell_first_contained_cell =
+            cell->get_contained_cells(cell_info.second, false /* skip full search */);
+
+          // we use an unordered map, so we need to note the ID we started with so that
+          // we properly index into the stored offsets
+          int first_id = nth_tally_cell_first_contained_cell.begin()->first;
+
+          int instance_offset = (nth_tally_cell_first_contained_cell.begin()->second.front() -
+            first_tally_cell_contained_cells[first_id].front()) / instance_offsets[first_id].front();
+
+          for (const auto & cc : first_tally_cell_contained_cells)
+          {
+            const auto & index = cc.first;
+            const auto & instances = cc.second;
+
+            std::vector<int32_t> shifted_instances;
+            shifted_instances.resize(instances.size());
+            for (unsigned int inst = 0; inst < instances.size(); ++inst)
+              shifted_instances[inst] = instances[inst] * (1 + instance_offset);
+
+            contained_cells[index] = shifted_instances;
+          }
+        }
+      }
+      else
+        contained_cells = cell->get_contained_cells(cell_info.second, true /* do full search */);
+
+      if (_check_identical_tally_cell_fills)
+        checking_cell_fills[cell_info] = cell->get_contained_cells(cell_info.second, true /* do full search */);
     }
 
     _cell_to_contained_material_cells[cell_info] = contained_cells;
+  }
+
+  if (_check_identical_tally_cell_fills)
+  {
+    // sort both the reference and the computed result
+    std::map<cellInfo, containedCells> ordered_reference(checking_cell_fills.begin(), checking_cell_fills.end());
+    std::map<cellInfo, containedCells> ordered(_cell_to_contained_material_cells.begin(), _cell_to_contained_material_cells.end());
+    compareContainedCells(ordered_reference, ordered);
+  }
+}
+
+void
+OpenMCCellAverageProblem::compareContainedCells(std::map<cellInfo, containedCells> & reference,
+  std::map<cellInfo, containedCells> & compare)
+{
+  // check that the number of keys matches
+  if (reference.size() != compare.size())
+    mooseError("The cell caching should have identified " + Moose::stringify(reference.size()) + " cells, but instead "
+      "found " + Moose::stringify(compare.size()));
+
+  // loop over each cellInfo
+  for (const auto & entry : reference)
+  {
+    auto cell_info = entry.first;
+    _console << "testing " << printCell(cell_info) << " has tallies: " << _cell_has_tally[cell_info] << std::endl;
+
+    // make sure the key exists
+    if (!compare.count(cell_info))
+      mooseError("The cell caching failed to map " + printCell(cell_info));
+
+    // for each cellInfo key, compare the contained cells map
+    auto reference_map = reference[cell_info];
+    auto compare_map = compare[cell_info];
+
+    // they should have the same number of keys
+    if (reference_map.size() != compare_map.size())
+      mooseError("The cell caching should have identified " + Moose::stringify(reference_map.size()) +
+        "cells contained in " + printCell(cell_info) + ", but instead found " +
+        Moose::stringify(compare_map.size()));
+
+    // loop over each contained cell
+    for (const auto & nested_entry : reference_map)
+    {
+      // make sure the key exists
+      auto nested_key = nested_entry.first;
+      if (!compare_map.count(nested_key))
+        mooseError("The cell caching failed to map cell ID " + Moose::stringify(nested_key));
+
+      // for each int32_t key, compare the std::vector<int32_t> map
+      auto reference_instances = reference_map[nested_key];
+      auto compare_instances = compare_map[nested_key];
+
+      // they should have the same number of instances
+      if (reference_instances.size() != compare_instances.size())
+        mooseError("The cell caching should have identified " + Moose::stringify(reference_instances.size()) +
+          "cell instances in cell ID " + Moose::stringify(nested_key) + ", but instead found " +
+          Moose::stringify(compare_instances.size()));
+
+      std::sort(reference_instances.begin(), reference_instances.end());
+      std::sort(compare_instances.begin(), compare_instances.end());
+
+      // and the instances should exactly match
+      if (reference_instances != compare_instances)
+      {
+        std::stringstream ref;
+        std::stringstream comp;
+
+        for (const auto & r : reference_instances)
+          ref << " " << r;
+
+        for (const auto & c : compare_instances)
+          comp << " " << c;
+
+        mooseError("The cell caching should have identified identical instances in cell ID " + Moose::stringify(nested_key) +
+          "\n\tCorrect instances: " + ref.str() + "\n\tComputed instances: " + comp.str());
+      }
+    }
   }
 }
 
