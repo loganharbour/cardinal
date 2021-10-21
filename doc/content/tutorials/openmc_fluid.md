@@ -237,8 +237,9 @@ the heat conduction model in $N$ layers along the fluid-solid interface. For the
 sent to MOOSE heat conduction is set to a uniform value along the
 fluid-solid interface according to a nearest-node mapping to the [!ac](THM) elements.
 
-Because [!ac](THM) will run last in the coupled case, initial conditions are only required for pressure and
-velocity, which are set to uniform distributions given by the inlet conditions.
+Because [!ac](THM) will run last in the coupled case, initial conditions are only required for pressure,
+fluid temperature, and velocity, which are set to uniform distributions. The pressure
+and temperature are set to the inlet values, while the velocity is set to zero.
 
 ## Multiphysics Coupling
 
@@ -312,10 +313,69 @@ executioner.
 !listing /tutorials/gas_assembly/solid.i
   block=Executioner
 
+### Fluid Input Files
+
+The fluid phase is solved with [!ac](THM), and is described in the `thm.i` input.
+This input file is built using syntax specific to [!ac](THM) - we will only briefly
+cover this syntax, and instead refer users to the [!ac](THM) user manuals for more information.
+First we define a number of constants at the beginning of the file and apply
+some global settings. We set the initial conditions for pressure, velocity,
+and temperature and indicate the fluid property object with `fp`.
+
+!listing /tutorial/gas_assembly/thm.i
+  end=FluidProperties
+
+Next, we set the fluid [!ac](EOS) using
+[IdealGasFluidProperties](https://mooseframework.inl.gov/source/userobjects/IdealGasFluidProperties.html).
+
+!listing /tutorials/gas_assembly/thm.i
+  block=FluidProperties
+
+Next, we define the "components" in the domain. These components essentially consist
+of the physics equations and boundary conditions solved by [!ac](THM), but expressed
+in much more compact, [!ac](THM)-specific syntax. These components define
+single-phase flow in a pipe, an inlet mass flowrate boundary condition, an outlet
+pressure boundary condition, and heat transfer to the pipe wall.
+
+!listing /tutorials/gas_assembly/thm.i
+  block=Components
+
+Associated with these components are a number of closures, defined as materials.
+We set up the Churchill correlation for the friction factor and the Dittus-Boelter
+correlation for the convective heat transfer coefficient. Additional materials are
+created to represent dimensionless numbers and other auxiliary terms, such as the
+wall temperature. If you are familiar with MOOSE, you will understand that
+the [Material](https://mooseframework.inl.gov/syntax/Materials/index.html) system
+is not always used to represent quantities traditionally thought of as "material properties."
+
+!listing /tutorials/gas_assembly/thm.i
+  block=Materials
+
+[!ac](THM) computes the wall temperature to apply a boundary condition in
+the MOOSE heat conduction module. To convert the `T_wall` material into an auxiliary
+variable, we use the `ADMaterialRealAux`.
+
+!listing /tutorials/gas_assembly/thm.i
+  start=AuxVariables
+  end=Materials
+
+Finally, we set the preconditioner, a [Transient](https://mooseframework.inl.gov/source/executioners/Transient.html),
+and set an Exodus output. The `steady_state_detection` and `steady_state_tolerance`
+parameters will automatically terminate the [!ac](THM) solution once the relative
+change in the solution is smaller than $10^{-8}$.
+
+!listing /tutorials/gas_assembly/thm.i
+  start=Preconditioning
+
+As you may notice, this [!ac](THM) input file only models a single coolant flow
+channel. We will leverage a feature in MOOSE that allows a single application to be
+repeated multiple times throughout a master application without having to
+merge input files or perform other transformations. We will run OpenMC as
+the master application; the syntax needed for this setup is covered next
+in [#n1].
+
 ### Neutronics Input Files
   id=n1
-
-### Fluid Input Files
 
 ## Execution and Postprocessing
 
