@@ -3,7 +3,7 @@
 In this tutorial, you will learn how to:
 
 - Couple OpenMC via temperature and density to separate MOOSE applications
-  solving for the [!ac](T/H) physics in the solid and fluid domains
+  solving for the thermal in the solid and fluid
 - Establish coupling between OpenMC and MOOSE for nested universe OpenMC models
 - Apply homogenized temperature feedback to heterogeneous OpenMC cells
 
@@ -86,7 +86,6 @@ distributed among the coolant channels. The outlet pressure is 7.1 MPa.
 
 To greatly reduce meshing requirements, the [!ac](TRISO) particles
 are homogenized into the compact regions by volume-averaging material properties.
-
 The solid mesh is shown in [solid_mesh]. The only sideset in the domain
 is the coolant channel surface, which is named `fluid_solid_interface`.
 To simplify the specification of
@@ -118,6 +117,15 @@ cardinal-opt -i common_input.i solid_mesh.i --mesh-only
 which takes advantage of a MOOSE feature for combining input files together by placing
 some common parameters used by the other applications into a file named `common_input.i`.
 Alternatively, you can download this mesh from Box.
+
+The temperature on the fluid-solid interface is provided by [!ac](THM),
+while the heat source is provided by OpenMC.
+Because MOOSE heat conduction will run first in the coupled case,
+the initial fluid temperature is
+set to a axial distribution given by bulk energy conservation ($q=\dot{m}C_{p,f}\left(T_f-T_{inlet}\right)$)
+given the inlet temperature $T_{inlet}$, mass flowrate $\dot{m}$, fluid
+isobaric specific heat $C_{p,f}$. The initial heat source distribution is assumed
+uniform in the radial direction with a sinusoidal dependence in the axial direction.
 
 ### OpenMC Model
 
@@ -184,11 +192,10 @@ OpenMC receives on each axial plane a total of 721 temperatures and 108 densitie
 210\underbrace{\text{ fuel compacts}}_{\substack{\textup{1 TRISO compact (\textit{rainbow})}\\\textup{1 matrix region (\textit{purple})}}}\ \ +\ \ \ 108\underbrace{\text{ coolant channels}}_{\substack{\textup{1 coolant region (\textit{various})}\\\textup{1 matrix region (\textit{various})}}}\ \ +\ \ \ 6\underbrace{\text{ poison compacts}}_{\substack{\textup{1 poison region (\textit{brown})}\\\textup{1 matrix region (\textit{blue})}}}\ \ +\ \ \ 73\underbrace{\text{ graphite fillers}}_\text{1 matrix region (\textit{mustard})}
 \end{equation*}
 
+The solid temperature is provided by the MOOSE heat conduction module,
+while the fluid temperature and density are provided by [!ac](THM).
 Because we will run OpenMC second, the initial fluid temperature is
-set to a axial distribution given by bulk energy conservation ($q=\dot{m}C_{p,f}\left(T_f-T_{inlet}\right)$)
-given the inlet temperature $T_{inlet}$, mass flowrate $\dot{m}$, fluid
-isobaric specific heat $C_{p,f}$. Just for the purposes of obtaining a reasonable
-fluid temperature initial condition, a sinusoidal heat source $q$ is assumed.
+set to the same initial condition imposed in the MOOSE heat conduction model.
 The fluid density is then set using the ideal gas [!ac](EOS) at a fixed pressure
 of 7.1 MPa given the imposed temperature, i.e. $\rho_f(P,T_f)$.
 
