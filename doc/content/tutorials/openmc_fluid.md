@@ -1,4 +1,4 @@
-# Tutorial 7: Temperature and Density Coupling of OpenMC, MOOSE, and THM
+# Tutorial 7: Solid and Fluid Coupling of OpenMC, MOOSE, and THM
 
 In this tutorial, you will learn how to:
 
@@ -23,7 +23,7 @@ in `tutorials/gas_assembly`.
 In this tutorial, we couple OpenMC to the MOOSE heat conduction module
 and [!ac](THM), a 1-D systems level thermal-fluids code based on
 MOOSE. [!ac](THM) essentially contains all the single-phase physics in
-RELAP-7 [!ac](relap7). OpenMC will receive temperature feedback from both
+RELAP-7 [!cite](relap7). OpenMC will receive temperature feedback from both
 the MOOSE heat conduction module (for the solid regions) and from [!ac](THM)
 (for the fluid regions). Density feedback will be provided by [!ac](THM).
 This tutorial models a full-height [!ac](TRISO)-fueled prismatic gas reactor
@@ -42,7 +42,7 @@ context beyond the scope of this tutorial.
 ## Geometry and Computational Model
 
 The geometry consists of a [!ac](TRISO)-fueled gas reactor assembly, loosely
-based on a point design available in the literature [!ac](sterbentz).
+based on a point design available in the literature [!cite](sterbentz).
 A top-down view of the geometry is shown in [assembly].
 The assembly is a graphite prismatic hexagonal block with 108 helium coolant channels,
 210 fuel compacts, and 6 poison compacts. Each fuel compact contains [!ac](TRISO)
@@ -57,7 +57,7 @@ There are also graphite reflectors above and below the assembly.
 !media assembly.png
   id=assembly
   caption=[!ac](TRISO)-fueled gas reactor fuel assembly
-  style=width:70%;margin-left:auto;margin-right:auto
+  style=width:80%;margin-left:auto;margin-right:auto
 
 The [!ac](TRISO) particles use a conventional design that consists of a central
 fissil uranium oxycarbide kernel enclosed in a carbon buffer, an inner
@@ -81,6 +81,43 @@ channels with a total mass flowrate of 9.775 kg/s, which is assumed to be unifor
 distributed among the coolant channels. The outlet pressure is 7.1 MPa.
 
 ### Heat Conduction Model
+
+!include steady_hc.md
+
+To greatly reduce meshing requirements, the [!ac](TRISO) particles
+are homogenized into the compact regions by volume-averaging material properties.
+
+The solid mesh is shown in [solid_mesh]. The only sideset in the domain
+is the coolant channel surface, which is named `fluid_solid_interface`.
+To simplify the specification of
+material properties, the solid geometry uses a length unit of meters.
+The solid mesh is created using the MOOSE reactor module [!cite](shemon_2021),
+which provides easy-to-use
+mesh generators to programmatically construct reactor core meshes as building blocks of bundle
+and pincell meshes.
+
+!media assembly_solid_mesh.png
+  id=solid_mesh
+  caption=Mesh for the solid heat conduction model
+  style=width:80%;margin-left:auto;margin-right:auto
+
+The file used to generate the solid mesh is shown below. The mesh is created
+by first building pincell meshes for a fuel pin, a coolant pin, a poison pin,
+and a graphite "pin" (to represent the central graphite region). The pin
+meshes are then combined together into a bundle pattern and extruded into the $z$
+direction.
+
+!listing solid_mesh.i
+
+You can create this mesh by running:
+
+```
+cardinal-opt -i common_input.i solid_mesh.i --mesh-only
+```
+
+which takes advantage of a MOOSE feature for combining input files together by placing
+some common parameters used by the other applications into a file named `common_input.i`.
+Alternatively, you can download this mesh from Box.
 
 ### OpenMC Model
 
@@ -113,7 +150,7 @@ This duplicates the material properties (densities and isotopic compisition), bu
 a new ID that allows individual tracking of density. The Python script used to create the
 OpenMC model is shown below.
 
-
+!listing /tutorials/gas_assembly/assembly.py language=python
 
 The level on which we will apply feedback from MOOSE is 1, because the geometry
 consists of a hexagonal lattice (level 0), and we want to apply individual cell feedback
@@ -135,7 +172,7 @@ regions is also visible in [openmc_model].
 !media assembly_cells.png
   id=openmc_model
   caption=OpenMC model, colored by cell ID or instance
-  style=width:60%;margin-left:auto;margin-right:auto
+  style=width:80%;margin-left:auto;margin-right:auto
 
 Cardinal applies uniform temperature and density feedback to OpenMC
 for each unique cell ID $+$ instance combination. For this setup,
@@ -148,7 +185,7 @@ OpenMC receives on each axial plane a total of 721 temperatures and 108 densitie
 \end{equation*}
 
 Because we will run OpenMC second, the initial fluid temperature is
-set to a axial distribution given by bulk energy conservation ($q=\dot{m}C_{p,f}\left(T_f-T_{inlet}\right))
+set to a axial distribution given by bulk energy conservation ($q=\dot{m}C_{p,f}\left(T_f-T_{inlet}\right)$)
 given the inlet temperature $T_{inlet}$, mass flowrate $\dot{m}$, fluid
 isobaric specific heat $C_{p,f}$. Just for the purposes of obtaining a reasonable
 fluid temperature initial condition, a sinusoidal heat source $q$ is assumed.
@@ -164,4 +201,35 @@ $ python assembly.py
 You can also use the XML files checked in to the `tutorials/gas_assembly` directory.
 
 ### THM Model
+
+[!ac](THM) solves for conservation of mass, momentum, and energy with 1-D area averages of the Navier-Stokes equations,
+
+\begin{equation}
+\label{eq:thm1}
+\frac{\partial}{\partial t}\left(A\rho_f\right)+\frac{\partial}{\partial x}\left(A\rho_fu\right)=0\ ,
+\end{equation}
+
+\begin{equation}
+\label{eq:thm2}
+\frac{\partial}{\partial t}\left(A\rho_fu\right)+\frac{\partial}{\partial x}\left(A\rho_fu^2+AP\right)=\tilde{P}\frac{\partial A}{\partial x}-\frac{f}{2D_h}\rho_fu|u|A
+\end{equation}
+
+\begin{equation}
+\label{eq:thm3}
+\frac{\partial}{\partial t}\left(A\rho_f E_f\right)+\frac{\partial}{\partial x}\left\lbrack Au\left(\rho_fE_f+P\right)\right\rbrack=-\tilde{P}\frac{\partial A}{\partial t}+H_wa_w\left(T_\text{wall}-T_\text{bulk}\right)A
+\end{equation}
+
+where $x$ is the coordinate along the flow length, $A$ is the channel cross-sectional area, $u$ is the $x$-component of velocity, $\tilde{P}$ is the average pressure on the curve boundary, $f$ is the friction factor, $H_w$ is the wall heat transfer coefficient, $a_w$ is the heat transfer area density, $T_\text{wall}$ is the wall temperature, and $T_\text{bulk}$ is the area average bulk fluid temperature. The Churchill correlation is used for $f$ and the Dittus-Boelter correlation is used for $H_w$ [!cite](relap7).
+
+The [!ac](THM) mesh for each flow channel is a 1-D mesh with 150 elements.
+The mesh is constructed automatically within [!ac](THM).
+To simplify the specification of
+material properties, the fluid geometry uses a length unit of meters.
+The heat flux imposed in the 150 \gls{thm} elements is obtained by area averaging the heat flux from
+the heat conduction model in $N$ layers along the fluid-solid interface. For the reverse transfer, the wall temperature
+sent to MOOSE heat conduction is set to a uniform value along the
+fluid-solid interface according to a nearest-node mapping to the [!ac](THM) elements.
+
+Because [!ac](THM) will run last in the coupled case, initial conditions are only required for pressure and
+velocity, which are set to uniform distributions given by the inlet conditions.
 
