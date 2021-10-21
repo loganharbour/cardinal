@@ -35,7 +35,7 @@ tutorial, we add fluid feedback and describe several nuances associated with
 setting up feedback in OpenMC lattices.
 
 This tutorial was developed with support from the NEAMS Thermal Fluids Center
-of Excellence. A paper [!cite](novak2021)
+of Excellence. A paper [!cite](novak_2021c)
 describing the physics models and mesh refinement studies provides additional
 context beyond the scope of this tutorial.
 
@@ -240,3 +240,99 @@ fluid-solid interface according to a nearest-node mapping to the [!ac](THM) elem
 Because [!ac](THM) will run last in the coupled case, initial conditions are only required for pressure and
 velocity, which are set to uniform distributions given by the inlet conditions.
 
+## Multiphysics Coupling
+
+In this section, OpenMC, MOOSE, and [!ac](THM) are coupled for heat source
+and temperature feedback for the fluid and solid regions of a [!ac](TRISO)-fueled
+gas reactor assembly. All input files are present in the
+`tutorials/gas_assembly` directory. The following sub-sections describe these files.
+
+### Solid Input Files
+
+The solid phase is solved with the MOOSE heat conduction module, and is described
+in the `solid.i` input. We define a number of constants at the beginning of the file
+and set up the mesh from a file.
+
+!listing /tutorials/gas_assembly/solid.i
+  end=Variables
+
+Next, we define the temperature variable, `T`, and specify the governing equations
+and boundary conditions we will apply.
+
+!listing /tutorials/gas_assembly/solid.i
+  start=Variables
+  end=Functions
+
+The MOOSE heat conduction module will receive power from OpenMC in the form of an
+[AuxVariable](https://mooseframework.inl.gov/syntax/AuxVariables/index.html),
+so we define a receiver variable for the fission power, as `power`. The MOOSE heat
+conduction module will also receive a fluid wall temperature from [!ac](THM)
+as another [AuxVariable](https://mooseframework.inl.gov/syntax/AuxVariables/index.html)
+which we name `thm_temp`. Finally, the MOOSE heat conduction module will send the heat
+flux to [!ac](THM), so we add a variable named `flux` that we will use to compute
+the heat flux.
+
+!listing /tutorials/gas_assembly/solid.i
+  start=AuxVariables
+  end=Executioner
+
+We use functions to define the thermal conductivities. We compute the material
+properties for the [!ac](TRISO) compacts as volume averages of the various constituent
+materials. We will evaluate the thermal conductivity for the boron carbide as a
+function of temperature by using `t` (which *usually* is interpeted as time) as
+a variable to represent temperature. This is syntax supported
+by the [HeatConductionMaterials](https://mooseframework.inl.gov/source/materials/HeatConductionMaterial.html)
+used to apply these functions to the thermal conductivity.
+
+!listing /tutorials/gas_assembly/solid.i
+  start=Functions
+  end=Postprocessors
+
+We define a number of postprocessors for querying the solution as well as for
+normalizing the fission power and heat flux, to be described at greater
+length in [#n1].
+
+!listing /tutorials/gas_assembly/solid.i
+  block=Postprocessors
+
+For visualization purposes only, we add
+[NearestPointLayeredAverages](https://mooseframework.inl.gov/source/userobject/NearestPointLayeredAverage.html)
+for the fuel and block temperatures. These will average the temperature in 150 layers
+oriented in the $z$ direction, which we will use for plotting axial temperature
+distributions. We output the results of these userobjects to CSV using
+[SpatialUserObjectVectorPostprocessors](https://mooseframework.inl.gov/source/vectorpostprocessors/SpatialUserObjectVectorPostprocessor.html) and by setting `csv = true` in the output. Note that the temperature
+sent to OpenMC comes from the `T` variable, and not from these user objects.
+
+!listing /tutorials/gas_assembly/solid.i
+  start=UserObjects
+
+Finally, we specify a [Steady](https://mooseframework.inl.gov/source/executioners/Steady.html)
+executioner.
+
+!listing /tutorials/gas_assembly/solid.i
+  block=Executioner
+
+### Neutronics Input Files
+  id=n1
+
+### Fluid Input Files
+
+## Execution and Postprocessing
+
+To run the coupled calculation, run the following:
+
+```
+$ mpiexec -np 6 cardinal-opt -i common_input.i openmc.i --n-threads=12
+```
+
+This will run with 6 [!ac](MPI) processes and 12 OpenMP threads (you may use other
+parallel configurations as needed). This tutorial uses quite large meshes due to the
+6 meter height of the domain - if you wish to run this tutorial with fewer computational
+resources, just edit the `height` in the `common_input.i` file and the `n_layers`
+local variable defining the axial mesh extrusions in `solid_mesh.i` and `openmc_mesh.i`.
+When the simulation has completed, you will have created a number of different output files:
+
+- `openmc_out.e`, an Exodus file with the OpenMC solution and the data that was
+  ultimately transferred in/out of OpenMC
+- `openmc_out_bison0.e`, an Exodus file with the solid solution
+- `openmc_out_thm<n>.e`, Exodus files with each of the `<n>` [!ac](THM) solutions
