@@ -42,7 +42,7 @@ documentation.
 ## Tutorials for OpenMC Wrapping
 
 6. [Solid temperature coupling of OpenMC and MOOSE heat conduction](tutorials/openmc_solid.md)
-7. [Fluid density and temperature coupling of OpenMC and MOOSE Navier-Stokes](tutorials/openmc_fluid.md)
+7. [Temperature and density coupling of OpenMC, MOOSE heat conduction, and THM fluids](tutorials/openmc_fluid.md)
 8. [Running OpenMC as a standalone application](tutorials/openmc_standalone.md)
 
 ## Tutorials for Combined NekRS and OpenMC Multiphysics
