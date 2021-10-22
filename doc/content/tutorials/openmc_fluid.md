@@ -320,9 +320,9 @@ This input file is built using syntax specific to [!ac](THM) - we will only brie
 cover this syntax, and instead refer users to the [!ac](THM) user manuals for more information.
 First we define a number of constants at the beginning of the file and apply
 some global settings. We set the initial conditions for pressure, velocity,
-and temperature and indicate the fluid property object with `fp`.
+and temperature and indicate the fluid [!ac](EOS) object.
 
-!listing /tutorial/gas_assembly/thm.i
+!listing /tutorials/gas_assembly/thm.i
   end=FluidProperties
 
 Next, we set the fluid [!ac](EOS) using
