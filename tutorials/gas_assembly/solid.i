@@ -1,3 +1,11 @@
+# copy-pasta from common_input.i
+inlet_T = 598.0                          # inlet fluid temperature (K)
+buffer_k = 0.5                           # buffer thermal conductivity (W/m/K)
+PyC_k = 4.0                              # PyC thermal conductivity (W/m/K)
+SiC_k = 13.9                             # SiC thermal conductivity (W/m/K)
+kernel_k = 3.5                           # fissil kernel thermal conductivity (W/m/K)
+matrix_k = 15.0                          # graphite matrix thermal conductivity (W/m/K)
+num_layers_for_plots = 50                # number of layers to average fields over for plotting
 triso_pf = 0.15                          # TRISO packing fraction (%)
 kernel_radius = 214.85e-6                # fissile kernel outer radius (m)
 buffer_radius = 314.85e-6                # buffer outer radius (m)
@@ -12,14 +20,6 @@ buffer_fraction = ${fparse (buffer_radius^3 - kernel_radius^3) / oPyC_radius^3}
 ipyc_fraction = ${fparse (iPyC_radius^3 - buffer_radius^3) / oPyC_radius^3}
 sic_fraction = ${fparse (SiC_radius^3 - iPyC_radius^3) / oPyC_radius^3}
 opyc_fraction = ${fparse (oPyC_radius^3 - SiC_radius^3) / oPyC_radius^3}
-
-# copy-pasta from common_input.i
-inlet_T = 598.0                          # inlet fluid temperature (K)
-buffer_k = 0.5                           # buffer thermal conductivity (W/m/K)
-PyC_k = 4.0                              # PyC thermal conductivity (W/m/K)
-SiC_k = 13.9                             # SiC thermal conductivity (W/m/K)
-kernel_k = 3.5                           # fissil kernel thermal conductivity (W/m/K)
-matrix_k = 15.0                          # graphite matrix thermal conductivity (W/m/K)
 
 [Mesh]
   type = FileMesh
@@ -69,7 +69,7 @@ matrix_k = 15.0                          # graphite matrix thermal conductivity 
     vars = 'k_TRISO k_graphite'
     vals = 'k_TRISO k_graphite'
   []
-  [k_b4c] # from \cite{wood}
+  [k_b4c]
     type = ParsedFunction
     value = '5.096154e-6 * t - 1.952360e-2 * t + 2.558435e1'
   []
@@ -115,12 +115,11 @@ matrix_k = 15.0                          # graphite matrix thermal conductivity 
     value_type = max
     block = 'graphite'
   []
-
-  [power]
+  [power] # evaluate the total power for normalization
     type = ElementIntegralVariablePostprocessor
     variable = power
     block = 'compacts'
-    execute_on = transfer
+    execute_on = 'transfer'
   []
 []
 
@@ -149,7 +148,7 @@ matrix_k = 15.0                          # graphite matrix thermal conductivity 
 []
 
 [Executioner]
-  type = Steady
+  type = Transient
   nl_abs_tol = 1e-5
   nl_rel_tol = 1e-16
   petsc_options_value = 'hypre boomeramg'
@@ -160,17 +159,17 @@ matrix_k = 15.0                          # graphite matrix thermal conductivity 
   [average_fuel_axial]
     type = NearestPointLayeredAverage
     variable = T
-    points = '0.0 0.0 0.0'
     direction = z
-    num_layers = 150
+    num_layers = ${num_layers_for_plots}
+    points = '0.0 0.0 0.0'
     block = 'compacts'
   []
   [average_block_axial]
     type = NearestPointLayeredAverage
     variable = T
-    points = '0.0 0.0 0.0'
     direction = z
-    num_layers = 150
+    num_layers = ${num_layers_for_plots}
+    points = '0.0 0.0 0.0'
     block = 'graphite'
   []
 []

@@ -5,6 +5,8 @@ outlet_P = 7.1e6                         # fluid outlet pressure (Pa)
 channel_diameter = 0.016                 # diameter of the coolant channels (m)
 height = 6.343                           # height of the assembly (m)
 
+num_layers_for_THM = 150
+
 [GlobalParams]
   initial_p = ${outlet_P}
   initial_T = ${inlet_T}
@@ -102,7 +104,7 @@ height = 6.343                           # height of the assembly (m)
     A = ${fparse pi * channel_diameter * channel_diameter / 4}
     D_h = ${channel_diameter}
     length = ${height}
-    n_elems = 150
+    n_elems = ${num_layers_for_THM}
   []
 
   [inlet]
