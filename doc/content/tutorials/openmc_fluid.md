@@ -242,8 +242,8 @@ sent to MOOSE heat conduction is set to a uniform value along the
 fluid-solid interface according to a nearest-node mapping to the [!ac](THM) elements.
 
 Because [!ac](THM) will run last in the coupled case, initial conditions are only required for pressure,
-fluid temperature, and velocity, which are set to uniform distributions. The pressure
-and temperature are set to the inlet values, while the velocity is set to zero.
+fluid temperature, and velocity, which are set to uniform distributions. The pressure, temperature,
+and velocity are set to the inlet values.
 
 ## Multiphysics Coupling
 
@@ -393,14 +393,15 @@ will receive temperature and density from the coupled applications, and on which
 OpenMC will write the fission heat source. Because the coupled MOOSE applications
 use length units of meters, the mesh mirror must also be in units of meters in order
 to obtain correct data transfers. For simplicity, we use the same solid mesh as
-used by the solid heat conduction solution. For the fluid region, we use MOOSE
+used by the solid heat conduction solution, but this is not required.
+For the fluid region, we use MOOSE
 mesh generators to construct a mesh for a single coolant channel, and then
 repeat it for the 108 coolant channels.
 
 !listing /tutorials/gas_assembly/openmc.i
   end=AuxVariables
 
-Before progressing further, we need to describe the multiapp structure
+Before progressing further, we first need to describe the multiapp structure
 connecting OpenMC, MOOSE heat conduction, and [!ac](THM). We set the master application
 to OpenMC, and will have both MOOSE heat conduction and [!ac](THM) as
 "sibling" sub-applications. At the time of writing, the MOOSE framework
@@ -418,7 +419,12 @@ Next, we define several auxiliary variables.
 For visualization purposes,
 we use a [CellTemperatureAux](/auxkernels/CellTemperatureAux.md) to view
 the temperature set in each OpenMC cell and a [CellDensityAux](/auxkernels/CellDensityAux.md)
-to view the density set in each fluid OpenMC cell. We add a receiver
+to view the density set in each fluid OpenMC cell. To understand how the OpenMC
+model maps to the `[Mesh]`, we also include
+[CellMaterialIDAux](/auxkernels/CellMaterialIDAux.md),
+[CellIDAux](/auxkernels/CellIDAux.md), and
+[CellInstanceAux](/auxkernels/CellInstanceAux.md) auxiliary kernels.
+Next, we add a receiver
 `flux` variable that will hold the heat flux received from MOOSE (and sent
 to [!ac](THM)) and another receiver variable `thm_temp_wall` that will hold
 the wall temperature received from [!ac](THM) (and sent to MOOSE). In addition,
@@ -436,7 +442,7 @@ receive temperatures from different applications, we will need to:
 
 We combine the `solid_temp` and `thm_temp` variables using two
 [ParsedAux](https://mooseframework.inl.gov/source/auxkernels/ParsedAux.html)
-auxkernels to set equality between `temp` and each of these received
+auxiliary kernels to set equality between `temp` and each of these received
 variables in the appropriate mesh blocks. Finally, to reduce the number
 of transfers from [!ac](THM), we will receive fluid temperature from
 [!ac](THM), but re-compute the density locally in the OpenMC wrapping
@@ -457,7 +463,7 @@ conduction module and to [!ac](THM) occur, these initial conditions will be pass
 
 The `[Problem]` block is then used to specify settings for the OpenMC wrapping. We
 define the total power for normalization, indicate that blocks 1, 2, and 4 are solid
-(graphite, compacts, and poision) while block 101 is fluid. We automatically add
+(graphite, compacts, and poison) while block 101 is fluid. We automatically add
 tallies to block 2, the fuel compacts. Because OpenMC solves in units of centimeters,
 we specify a `scaling` of 100, i.e. a multiplicative factor to apply to the
 `[Mesh]` to get into OpenMC's centimeter units.
@@ -471,13 +477,13 @@ This is used to obtain uncertainty estimates of the heat source distribution fro
 in the same units as the heat source. We also leverage a helper utility
 in Cardinal by setting `check_equal_mapped_tally_volumes = true`. This parameter will
 throw an error if the tallied OpenMC cells map to different volumes in the MOOSE domain.
-Because we known *a priori* that the equal-volume OpenMC tally cells *should* all map
+Because we know *a priori* that the equal-volume OpenMC tally cells *should* all map
 to equal volumes, this will help ensure that the volumes used for heat source normalization
 are also all equal. For further discussion of this setting and a pictorial description
-of the effect of non-equal mapped vlumes, please see the
+of the possible effect of non-equal mapped vlumes, please see the
 [OpenMCCellAverageProblem](/problems/OpenMCCellAverageProblem.md) documentation.
 
-Finally, we set `identical_tally_cell_fills = true`. This is an optimization that greatly
+We also set `identical_tally_cell_fills = true`. This is an optimization that greatly
 reduces the initialization time for large [!ac](TRISO) problems. During setup of an
 OpenMC wrapping, we need to cache all the cells contained with the [!ac](TRISO) compacts
 so that we know all the contained cells to set the temperatures for. This process can
@@ -494,6 +500,22 @@ When first using this optimization for a new problem, we recommend setting
 against the "rigorous" approach to be sure that your problem setup has the necessary
 prerequisites to use this feature. After you verify that no errors are thrown during
 setup, set `check_identical_tally_cell_fills` to `false` to use this initialization speedup feature.
+
+Finally, we apply a constant relaxation model to the heat source. A constant
+relaxation will compute the heat source in iteration $i+1$ as an average
+of the heat source from iteration $i$ and the most-recently-computed heat source,
+indicated here as a generic operator $\Phi$ which represents the Monte Carlo solve:
+
+\begin{equation}
+\label{eq:relax}
+q^{i+1}=\left(1-\alpha\right)q^i+\alpha\Phi
+\end{equation}
+
+In [eq:relax], $\alpha$ is the relaxation factor, which we set here to 0.5. In other
+words, the heat source in iteration $i+1$ is an average of the most recent Monte
+Carlo solution and the previous iterate. This is necessary to accelerate the fixed
+point iterations and achieve convergence in a reasonable time - otherwise oscillations
+can occur in the coupled physics.
 
 We run OpenMC as the master application, so we next need to define
 [MultiApps](https://mooseframework.inl.gov/syntax/MultiApps/index.html) to run
@@ -548,7 +570,8 @@ CSV format by translating the user objects into
 
 Finally, we use a [Transient](https://mooseframework.inl.gov/source/executioners/Transient.html)
 executioner and specify Exodus and CSV output formats. Note that the time step size is
-inconsequential in this case, but instead represents the Picard iteration.
+inconsequential in this case, but instead represents the Picard iteration. We will run for 10
+"time steps," which represent fixed point iterations.
 
 !listing /tutorials/gas_assembly/openmc.i
   start=Executioner
@@ -572,6 +595,7 @@ $ python assembly.py
 $ cardinal-opt -i common_input.i solid_mesh.i --mesh-only
 ```
 
+and then run the simulation.
 When the simulation has completed, you will have created a number of different output files:
 
 - `openmc_out.e`, an Exodus file with the OpenMC solution and the data that was
@@ -599,4 +623,88 @@ When the simulation has completed, you will have created a number of different o
 - `openmc_out_velocity_avg_<n>.csv`, a CSV file with the layer-average axial fluid
   velocity at time step `<n>`
 
+Coupled convergence is defined at the point when 1) the $k$ eigenvalue
+is within the uncertainty band of the previous iteration and 2)
+there is less than 2 K absolute change in maximum fuel, block, and fluid temperatures.
+Convergence is obtained in 5 fixed point iterations. [convergence] shows the
+maximum fuel, compact, and fluid temperatures, along with the $k$ eigenvalue,
+as a function of iteration number for all 10 iterations run. For each iteration, we first run MOOSE
+heat conduction (which we indicate as iterations A1, A2, and so on), followed
+by OpenMC (which we indicate as iterations B1, B2, and so on), and finally
+[!ac](THM) (which we indicate as iterations C1, C2, and so on). In other words,
+in iteration $i$:
 
+- Iteration A$i$ represents a MOOSE heat conduction solve
+  using the power and fluid-solid wall temperature from iteration $i-1$
+- Iteration B$i$ represents an OpenMC Monte Carlo solve using the solid temperature
+  from iteration $i$ and the fluid temperature and density from iteration $i-1$
+- Iteration C$i$ represents a [!ac](THM) solve using the fluid-solid wall heat
+  flux from iteration $i$
+
+!media assembly_convergence.png
+  id=convergence
+  caption=Convergence in various metrics as a function of iteration number
+
+[power_convergence] shows the radially-averaged power from OpenMC as a function
+of iteration number. There is essentially no change in the axial distribution beyond
+5 fixed point iterations, which further confirms that we have obtained a converged solution.
+The remainder of the depicted results correpond to iteration 5.
+
+!media assembly_q_iteration.png
+  id=power_convergence
+  caption=Radially-average fission power distribution as a function of iteration number $i$
+  style=width:40%;margin-left:auto;margin-right:auto
+
+[power] shows the fission power distribution
+computed by OpenMC. The inset shows the power distribution on an $x-y$ plane 2.15 meters from the inlet,
+where the maximum power occurs. Slight azimuthal asymmetries exist due to the finite tally
+uncertainty.
+Neutrons reflecting back into the fuel region from the axial reflectors
+cause local power peaking at the ends of the assembly, while the negative fuel temperature
+coefficient causes the power distribution to shift towards the reactor inlet
+where temperatures are lower.
+The six poison compacts in the corners result in local power depression such that
+the highest compact powers occur near the center of the assembly.
+
+!media assembly_power.png
+  id=power
+  caption=Fission power predicted by OpenMC; note the use of a separate color scale for the inset.
+
+[assembly_temp] shows the solid temperature (left)
+computed by MOOSE and the cell temperature imposed in OpenMC (right).
+The bottom row shows the temperature on an $x-y$ plane 2.15 meters from the inlet.
+The insulated boundary conditions, combined with a lower
+"density" of coolant channels near the lateral faces, result in higher compact temperatures
+near the assembly peripheries, except in the vicinity of the poison pins where the increased
+absorption reduces the local power densities.
+Each OpenMC cell is set to the volume-average temperature from the mesh mirror elements
+whose centroids mapped to each cell; a similar procedure is used to set
+cell temperatures and densities for the fluid cells.
+
+!media assembly_temp.png
+  id=assembly_temp
+  caption=Solid temperature predicted by MOOSE (left) and volume-average temperature imposed in OpenMC (right). Note the use of a separate color scale for the insets.
+
+[fluid_temp] shows the solid temperature computed by MOOSE on several $x-y$ planes
+with the fluid temperature computed by [!ac](THM) shown as tubes. An inset shows the fluid temperature
+on the outlet plane. The absence of compacts in the center region results in the lowest
+fluid temperatures in this region, while the highest fluid temperatures are observed for channels surrounded by 6 compacts 
+that are sufficiently close to the periphery to be affected by the lateral insulated boundary conditions.
+
+!media assembly_fluid_temp.png
+  id=fluid_temp
+  caption=Fluid temperature predicted by [!ac](THM) (tubes and inset) and solid temperature predicted by MOOSE (five slices). Note the use of three separate color scales.
+
+Finally, Fig. [assembly_averages] shows the radially-averaged fission distribution and fluid, compact, and graphite temperatures (left(;
+and velocity and pressure (right) as a function of axial position. The negative
+temperature feedback results in a top-peaked power distribution. The fuel temperature
+peaks near the mid-plane due to the combined effects of the relatively high power
+density and the continually-increasing fluid temperature with distance from the inlet. The pressure gradient is nearly
+constant with axial position. 
+Due to mass conservation, the heating of the fluid results in the velocity
+increasing with distance from the inlet.
+
+!media assembly_averages.png
+  id=assembly_averages
+  caption=Radially-averaged temperatures, power, pressure, and velocity as a function of position.
+  style=width:80%;margin-left:auto;margin-right:auto
