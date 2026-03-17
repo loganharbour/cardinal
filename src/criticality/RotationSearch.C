@@ -22,6 +22,7 @@ RotationSearch::validParams()
 RotationSearch::RotationSearch(const InputParameters & parameters)
   : CriticalitySearchBase(parameters),
     UserObjectInterface(this),
+    PostprocessorInterface(this),
     _transform_name(getParam<UserObjectName>("transform_name")),
     _rotation_axis_char(getParam<MooseEnum>("rotation_axis"))
 {
@@ -49,8 +50,52 @@ RotationSearch::RotationSearch(const InputParameters & parameters)
                    _transform_name +
                    ", which does not modify a cell rotation."
                    "Please select a transform that rotates a control drum cell.");
-  // confirm that rotation specified is valid for a criticality search
-  _t->checkTransformIsValidRotationForCriticalitySearch();
+
+  // confirm that vector_value member of the specified OpenMCCellTransform is valid for a
+  // RotationSearch
+  this->checkValidVectorValueForRotationSearch();
+}
+
+void
+RotationSearch::checkValidVectorValueForRotationSearch()
+{
+  std::vector<PostprocessorName> vv = _t->getVectorValue();
+  int non_zero_idx = int(_rotation_axis_char); // this position in vector_value should contain the
+                                               // only non-default Postprocessor
+
+  int num_postprocessors = 0;
+  // check vector_value to make sure that the rotation axis position is the only non-zero entry
+  for (int idx = 0; idx < vv.size(); idx++)
+  {
+    // if a numeric value was specified as an entry in vector_value it will be recognizable as a
+    // float to MooseUtils
+    if (MooseUtils::isFloat(vv[idx]))
+    {
+      if (idx == non_zero_idx)
+      {
+        _t->paramError("vector_value",
+                       "The entry corresponding to the specified rotation axis is not a "
+                       "Postprocessor, which is required for a RotationSearch.");
+      } // implied else
+      if (std::abs(std::stof(vv[idx])) > 1e-6)
+      {
+        _t->paramError("vector_value",
+                       "An entry that is not the rotation axis returned a non-zero value, which is "
+                       "not allowed.");
+      }
+    }
+    else
+    {
+      // entering this block confirms that an entry is a PostprocessorName, of which there can only
+      // be one and it must be the coordinate that aligns with the _rotation_axis_char
+      if (idx != non_zero_idx)
+      {
+        _t->paramError("vector_value",
+                       "Only one component of `vector_value` can be non-zero for a RotationSearch "
+                       "and it must be a PostprocessorName.");
+      }
+    }
+  }
 }
 
 void

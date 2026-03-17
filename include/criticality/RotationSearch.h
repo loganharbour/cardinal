@@ -8,12 +8,16 @@
 /**
  * Perform a criticality search based  Pon a material
  */
-class RotationSearch : public CriticalitySearchBase, public UserObjectInterface
+class RotationSearch : public CriticalitySearchBase,
+                       public UserObjectInterface,
+                       public PostprocessorInterface
 {
 public:
   static InputParameters validParams();
 
   RotationSearch(const InputParameters & parameters);
+
+  void checkValidVectorValueForRotationSearch();
 
   virtual void updateOpenMCModel(const Real & input) override;
 

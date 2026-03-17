@@ -82,27 +82,10 @@ OpenMCCellTransform::getTransformType() const
   return _transform_type;
 }
 
-void
-OpenMCCellTransform::checkTransformIsValidRotationForCriticalitySearch() const
+std::vector<PostprocessorName>
+OpenMCCellTransform::getVectorValue() const
 {
-  const auto & pp_name_vector = getParam<std::vector<PostprocessorName>>("vector_value");
-
-  int zero_count = 0;
-  int one_PP_name = 0;
-  for (PostprocessorName name : pp_name_vector)
-    if (MooseUtils::isFloat(name) && std::abs(std::stof(name)) < 1e-6)
-      zero_count++;
-    else if (!MooseUtils::isFloat(name))
-      one_PP_name++;
-    else
-      paramError("vector_value",
-                 "At least one of the entries in vector value is not a name of a Postprocessor and "
-                 "is not a 0.0.");
-
-  if (!(zero_count == 2 && one_PP_name == 1))
-    paramError("vector_value",
-               "Only one component of `vector_value` can be non-zero for a RotationSearch and it "
-               "must be a PostprocessorName. The other two components must be 0.0");
+  return getParam<std::vector<PostprocessorName>>("vector_value");
 }
 
 void

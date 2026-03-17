@@ -33,9 +33,9 @@ public:
 
   MooseEnum getTransformType() const;
 
-  void setTransformPPValues(const std::vector<Real> pp_values);
+  std::vector<PostprocessorName> getVectorValue() const;
 
-  void checkTransformIsValidRotationForCriticalitySearch() const;
+  void setTransformPPValues(const std::vector<Real> pp_values);
 
   virtual void initialize() override {}
   virtual void execute() override;
