@@ -12,18 +12,21 @@
     input = malformed_rotation.i
     expect_err = "An entry that is not the rotation axis returned a non-zero value, which is not allowed."
     requirement = 'The system shall error if a RotationSearch is specified with any non-zero `vector_value`.'
+    capabilities = 'openmc'
   []
   [rotation_with_more_than_one_PP]
     type = RunException
     input = two_postprocessor.i
     expect_err = "Only one component of `vector_value` can be non-zero for a RotationSearch and it must be a PostprocessorName."
     requirement = 'The system shall error if a RotationSearch is specified with more than one non-zero entry in `vector_value`.'
+    capabilities = 'openmc'
   []
   [rotation_with_no_PP_but_numeric_rotation_axis]
     type = RunException
     input = no_postprocessor.i
     expect_err = "The entry corresponding to the specified rotation axis is not a Postprocessor, which is required for a RotationSearch."
     requirement = 'The system shall error if there is no Postprocessor specifiedin `vector_value`, even if the non-zero component is correct with respect to the rotation axis.'
+    capabilities = 'openmc'
   []
   [rotation_search]
     type = CSVDiff
