@@ -6,7 +6,7 @@
 #include "UserObjectInterface.h"
 
 /**
- * Perform a criticality search based  Pon a material
+ * Perform a criticality search based on a rotation angle
  */
 class RotationSearch : public CriticalitySearchBase,
                        public UserObjectInterface,
@@ -25,10 +25,10 @@ protected:
   virtual std::string units() const override { return "[degrees]"; }
   virtual std::string quantity() const override { return "UO: [" + _transform_name + "]"; }
 
-  // name of the OpenMCCellTransform UserObject used to control the criticality search
+  /// name of the OpenMCCellTransform UserObject used to control the criticality search
   const UserObjectName _transform_name;
 
-  // the rotational axis used to search for criticality
+  /// the rotational axis used to search for criticality
   const MooseEnum _rotation_axis_char;
 
   /// pointer to OpenMCCellTransform to update the initial critical guess each iteration

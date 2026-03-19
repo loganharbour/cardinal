@@ -91,7 +91,7 @@ OpenMCCellTransform::getVectorValue() const
 void
 OpenMCCellTransform::setTransformPPValues(const std::vector<Real> pp_values)
 {
-  size_t num_pp_values = pp_values.size();
+  const auto num_pp_values = pp_values.size();
   if (num_pp_values != 3)
   {
     mooseError(
@@ -133,7 +133,7 @@ OpenMCCellTransform::execute()
       // If a user tried to apply translation on a cell that doesn't contain a filled universe,
       // OpenMC will return an error.
       err = openmc_cell_set_translation(index, vec);
-      _console << "Setting OpenMC cell(s) translation for cell(s) with ID " +
+      _console << "Setting OpenMC cell translation for cell with ID " +
                       std::to_string(cell_id) + " to ("
                << vec[0] << ", " << vec[1] << ", " << vec[2] << ") cm." << std::endl;
     }
@@ -154,7 +154,7 @@ OpenMCCellTransform::execute()
       // If a user tried to apply rotation on a cell that doesn't contain a filled universe,
       // OpenMC will return an error.
       err = openmc_cell_set_rotation(index, vec, 3);
-      _console << "Setting OpenMC cell rotation(s) for cell(s) with ID " + std::to_string(cell_id) +
+      _console << "Setting OpenMC cell rotation for cell with ID " + std::to_string(cell_id) +
                       "to ("
                << vec[0] << ", " << vec[1] << ", " << vec[2] << ") degrees." << std::endl;
     }

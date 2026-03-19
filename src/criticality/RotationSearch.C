@@ -26,7 +26,6 @@ RotationSearch::RotationSearch(const InputParameters & parameters)
     _transform_name(getParam<UserObjectName>("transform_name")),
     _rotation_axis_char(getParam<MooseEnum>("rotation_axis"))
 {
-  // update the OpenMCCellTransform UserObject with the last iteration critical guess
   try
   {
     &getUserObjectByName<OpenMCCellTransform>(_transform_name);
@@ -46,24 +45,23 @@ RotationSearch::RotationSearch(const InputParameters & parameters)
   // check that the specified transform is a rotational transform
   if (_t->getTransformType() != "rotation")
     paramError("transform_name",
-               "You have attempted search for critical drum angle on the OpenMCCellTransform " +
+               "You have attempted to search for critical rotation angle on the OpenMCCellTransform " +
                    _transform_name +
                    ", which does not modify a cell rotation."
-                   "Please select a transform that rotates a control drum cell.");
+                   "Please select a transform that rotates a cell.");
 
   // confirm that vector_value member of the specified OpenMCCellTransform is valid for a
   // RotationSearch
-  this->checkValidVectorValueForRotationSearch();
+  checkValidVectorValueForRotationSearch();
 }
 
 void
 RotationSearch::checkValidVectorValueForRotationSearch()
 {
-  std::vector<PostprocessorName> vv = _t->getVectorValue();
+  const auto vv = _t->getVectorValue();
   int non_zero_idx = int(_rotation_axis_char); // this position in vector_value should contain the
                                                // only non-default Postprocessor
 
-  int num_postprocessors = 0;
   // check vector_value to make sure that the rotation axis position is the only non-zero entry
   for (int idx = 0; idx < vv.size(); idx++)
   {
