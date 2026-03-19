@@ -17,6 +17,9 @@ public:
 
   RotationSearch(const InputParameters & parameters);
 
+  /** Verifies that the definition of the OpenMCCellTransform
+   * UserObject is valid for a rotational criticality search
+   */
   void checkValidVectorValueForRotationSearch();
 
   virtual void updateOpenMCModel(const Real & input) override;
@@ -28,8 +31,8 @@ protected:
   /// name of the OpenMCCellTransform UserObject used to control the criticality search
   const UserObjectName _transform_name;
 
-  /// the rotational axis used to search for criticality
-  const MooseEnum _rotation_axis_char;
+  /// the index of the rotational axis used to search for criticality
+  const int _rotation_axis_idx;
 
   /// pointer to OpenMCCellTransform to update the initial critical guess each iteration
   OpenMCCellTransform * _t;

@@ -24,31 +24,17 @@ RotationSearch::RotationSearch(const InputParameters & parameters)
     UserObjectInterface(this),
     PostprocessorInterface(this),
     _transform_name(getParam<UserObjectName>("transform_name")),
-    _rotation_axis_char(getParam<MooseEnum>("rotation_axis"))
+    _rotation_axis_idx(int(getParam<MooseEnum>("rotation_axis")))
 {
-  try
-  {
-    &getUserObjectByName<OpenMCCellTransform>(_transform_name);
-  }
-  catch (const std::exception & e)
-  {
-    std::string s = e.what();
-    paramError(
-        "transform_name",
-        "In attempting to get the OpenMCCellTransform UserObject, the following error occurred: " +
-            s +
-            "\nThis likely means that the name provided either is incorrect or is not an "
-            "OpenMCCellTransform UserObject.");
-  }
-  _t =
-      const_cast<OpenMCCellTransform *>(&getUserObjectByName<OpenMCCellTransform>(_transform_name));
+  _t = const_cast<OpenMCCellTransform *>(&getUserObject<OpenMCCellTransform>("transform_name"));
   // check that the specified transform is a rotational transform
   if (_t->getTransformType() != "rotation")
-    paramError("transform_name",
-               "You have attempted to search for critical rotation angle on the OpenMCCellTransform " +
-                   _transform_name +
-                   ", which does not modify a cell rotation."
-                   "Please select a transform that rotates a cell.");
+    paramError(
+        "transform_name",
+        "You have attempted to search for critical rotation angle on the OpenMCCellTransform " +
+            _transform_name +
+            ", which does not modify a cell rotation."
+            "Please select a transform that rotates a cell.");
 
   // confirm that vector_value member of the specified OpenMCCellTransform is valid for a
   // RotationSearch
@@ -59,8 +45,6 @@ void
 RotationSearch::checkValidVectorValueForRotationSearch()
 {
   const auto vv = _t->getVectorValue();
-  int non_zero_idx = int(_rotation_axis_char); // this position in vector_value should contain the
-                                               // only non-default Postprocessor
 
   // check vector_value to make sure that the rotation axis position is the only non-zero entry
   for (int idx = 0; idx < vv.size(); idx++)
@@ -69,7 +53,7 @@ RotationSearch::checkValidVectorValueForRotationSearch()
     // float to MooseUtils
     if (MooseUtils::isFloat(vv[idx]))
     {
-      if (idx == non_zero_idx)
+      if (idx == _rotation_axis_idx)
       {
         _t->paramError("vector_value",
                        "The entry corresponding to the specified rotation axis is not a "
@@ -86,7 +70,7 @@ RotationSearch::checkValidVectorValueForRotationSearch()
     {
       // entering this block confirms that an entry is a PostprocessorName, of which there can only
       // be one and it must be the coordinate that aligns with the _rotation_axis_char
-      if (idx != non_zero_idx)
+      if (idx != _rotation_axis_idx)
       {
         _t->paramError("vector_value",
                        "Only one component of `vector_value` can be non-zero for a RotationSearch "
@@ -103,7 +87,7 @@ RotationSearch::updateOpenMCModel(const Real & angle)
 
   // make a vectorized version of the rotation angle with 0 for the non-rotating axes
   std::vector<Real> angles = {Real(0.0), Real(0.0), Real(0.0)};
-  angles[int(_rotation_axis_char)] =
+  angles[_rotation_axis_idx] =
       angle; // the enum default indices correspond to which vector component is non zero
 
   // set the transform values using the angle vector

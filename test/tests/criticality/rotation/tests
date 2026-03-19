@@ -1,5 +1,12 @@
 [Tests]
   issues = '#1294'
+  [wrong_transform_type]
+    type = RunException
+    input = wrong_transform_type.i
+    expect_err = "Please select a transform that rotates a cell."
+    requirement = 'The system shall error if the OpenMCCellTransform UO is not a `rotation`.'
+    capabilities = 'openmc'
+  []
   [wrong_UO]
     type = RunException
     input = wrong_UO_type.i

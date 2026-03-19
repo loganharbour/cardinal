@@ -31,10 +31,22 @@ public:
 
   OpenMCCellTransform(const InputParameters & parameters);
 
+  /** Returns whether the UserObject is a translation or rotation
+   * @return the transform type
+   */
   MooseEnum getTransformType() const;
 
+  /** Returns a vector of PostprocessorNames corresponding to
+   * the entries in vector_value
+   * @return vector of PostprocessorName
+   */
   std::vector<PostprocessorName> getVectorValue() const;
 
+  /** Given a std::vector<Real>, this function sets the Postprocessor
+   * associated in the order they are defined in vector_value if a
+   * Receiver postprocessor exists at the position correspondign to the value
+   * @param[in] std::vector of values to set
+   */
   void setTransformPPValues(const std::vector<Real> pp_values);
 
   virtual void initialize() override {}
