@@ -66,7 +66,7 @@ OpenMCCellTransform::OpenMCCellTransform(const InputParameters & parameters)
                    "' in degrees for rotation transform.");
 
   for (const auto i : index_range(_t_pp))
-    _t_pp[i] = &getPostprocessorValue("vector_value", 0);
+    _t_pp[i] = &getPostprocessorValue("vector_value", i);
 }
 
 void

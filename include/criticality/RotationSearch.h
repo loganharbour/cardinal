@@ -36,7 +36,6 @@ public:
   /** Verifies that the definition of the OpenMCCellTransform
    * UserObject is valid for a rotational criticality search
    */
-  void checkValidVectorValueForRotationSearch();
 
   virtual void updateOpenMCModel(const Real & angle) override;
 
